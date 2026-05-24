@@ -5,6 +5,14 @@ import { Tile, TileMap } from "@/models/tile";
 
 type GameStatus = "ongoing" | "won" | "lost";
 
+type GameSnapshot = {
+  board: string[][];
+  tiles: TileMap;
+  tilesByIds: string[];
+  score: number;
+  status: GameStatus;
+};
+
 type State = {
   board: string[][];
   tiles: TileMap;
@@ -12,6 +20,8 @@ type State = {
   hasChanged: boolean;
   score: number;
   status: GameStatus;
+  history: GameSnapshot[];
+  initialStateCopy: GameSnapshot;
 };
 type Action =
   | { type: "create_tile"; tile: Tile }
@@ -21,7 +31,8 @@ type Action =
   | { type: "move_left" }
   | { type: "move_right" }
   | { type: "reset_game" }
-  | { type: "update_status"; status: GameStatus };
+  | { type: "update_status"; status: GameStatus }
+  | { type: "undo" };
 
 function createBoard() {
   const board: string[][] = [];
@@ -33,6 +44,24 @@ function createBoard() {
   return board;
 }
 
+function createSnapshot(state: State): GameSnapshot {
+  return {
+    board: JSON.parse(JSON.stringify(state.board)),
+    tiles: JSON.parse(JSON.stringify(state.tiles)),
+    tilesByIds: [...state.tilesByIds],
+    score: state.score,
+    status: state.status,
+  };
+}
+
+const initialSnapshot: GameSnapshot = {
+  board: createBoard(),
+  tiles: {},
+  tilesByIds: [],
+  score: 0,
+  status: "ongoing",
+};
+
 export const initialState: State = {
   board: createBoard(),
   tiles: {},
@@ -40,6 +69,8 @@ export const initialState: State = {
   hasChanged: false,
   score: 0,
   status: "ongoing",
+  history: [],
+  initialStateCopy: initialSnapshot,
 };
 
 export default function gameReducer(
@@ -132,13 +163,17 @@ export default function gameReducer(
           }
         }
       }
-      return {
-        ...state,
-        board: newBoard,
-        tiles: newTiles,
-        hasChanged,
-        score,
-      };
+      if (hasChanged) {
+        return {
+          ...state,
+          board: newBoard,
+          tiles: newTiles,
+          hasChanged,
+          score,
+          history: [...state.history, createSnapshot(state)],
+        };
+      }
+      return state;
     }
     case "move_down": {
       const newBoard = createBoard();
@@ -183,13 +218,17 @@ export default function gameReducer(
           }
         }
       }
-      return {
-        ...state,
-        board: newBoard,
-        tiles: newTiles,
-        hasChanged,
-        score,
-      };
+      if (hasChanged) {
+        return {
+          ...state,
+          board: newBoard,
+          tiles: newTiles,
+          hasChanged,
+          score,
+          history: [...state.history, createSnapshot(state)],
+        };
+      }
+      return state;
     }
     case "move_left": {
       const newBoard = createBoard();
@@ -234,13 +273,17 @@ export default function gameReducer(
           }
         }
       }
-      return {
-        ...state,
-        board: newBoard,
-        tiles: newTiles,
-        hasChanged,
-        score,
-      };
+      if (hasChanged) {
+        return {
+          ...state,
+          board: newBoard,
+          tiles: newTiles,
+          hasChanged,
+          score,
+          history: [...state.history, createSnapshot(state)],
+        };
+      }
+      return state;
     }
     case "move_right": {
       const newBoard = createBoard();
@@ -285,21 +328,46 @@ export default function gameReducer(
           }
         }
       }
-      return {
-        ...state,
-        board: newBoard,
-        tiles: newTiles,
-        hasChanged,
-        score,
-      };
+      if (hasChanged) {
+        return {
+          ...state,
+          board: newBoard,
+          tiles: newTiles,
+          hasChanged,
+          score,
+          history: [...state.history, createSnapshot(state)],
+        };
+      }
+      return state;
     }
     case "reset_game":
-      return initialState;
+      return {
+        ...initialState,
+        history: [],
+        initialStateCopy: state.initialStateCopy,
+      };
     case "update_status":
       return {
         ...state,
         status: action.status,
       };
+    case "undo": {
+      if (state.history.length === 0) {
+        return state;
+      }
+      const previousState = state.history[state.history.length - 1];
+      const newHistory = state.history.slice(0, -1);
+      return {
+        ...state,
+        board: previousState.board,
+        tiles: previousState.tiles,
+        tilesByIds: previousState.tilesByIds,
+        score: previousState.score,
+        status: previousState.status,
+        history: newHistory,
+        hasChanged: false,
+      };
+    }
     default:
       return state;
   }

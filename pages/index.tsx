@@ -3,8 +3,12 @@ import Image from "next/image";
 import Board from "@/components/board";
 import Score from "@/components/score";
 import styles from "@/styles/index.module.css";
+import { GameContext } from "@/context/game-context";
+import { useContext } from "react";
 
 export default function Home() {
+  const { canUndo, undo } = useContext(GameContext);
+
   return (
     <div className={styles.twenty48}>
       <Head>
@@ -25,7 +29,16 @@ export default function Home() {
       </Head>
       <header>
         <h1>2048</h1>
-        <Score />
+        <div className={styles.actions}>
+          <Score />
+          <button
+            className={styles.undoButton}
+            onClick={undo}
+            disabled={!canUndo}
+          >
+            Undo
+          </button>
+        </div>
       </header>
       <main>
         <Board />

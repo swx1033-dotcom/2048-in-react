@@ -21,6 +21,39 @@
   flex: 1;
 }
 
+.twenty48 > header > .actions {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--pixel-size) * 1);
+  flex: 1;
+}
+
+.undoButton {
+  background: var(--secondary-background);
+  border: calc(var(--pixel-size) * 0.5) solid var(--secondary-background);
+  border-radius: calc(var(--pixel-size) * 0.75);
+  color: var(--tile-background);
+  font-size: calc(var(--pixel-size) * 1.5);
+  font-weight: bold;
+  padding: calc(var(--pixel-size) * 1) calc(var(--pixel-size) * 2);
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: opacity 0.1s ease;
+}
+
+.undoButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (min-width: 512px) {
+  .undoButton {
+    border: calc(var(--pixel-size) * 1) solid var(--secondary-background);
+    font-size: calc(var(--pixel-size) * 2);
+    padding: calc(var(--pixel-size) * 1) calc(var(--pixel-size) * 2);
+  }
+}
+
 .twenty48 > footer {
   margin: calc(var(--pixel-size) * 3) calc(var(--pixel-size) * 0);
   font-weight: 600;

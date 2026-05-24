@@ -5,7 +5,7 @@ import {
   useEffect,
   useReducer,
 } from "react";
-import { isNil, throttle } from "lodash";
+import { isNil } from "lodash";
 import {
   gameWinTileValue,
   mergeAnimationDuration,
@@ -57,11 +57,7 @@ export default function GameProvider({ children }: PropsWithChildren) {
   };
 
   const moveTiles = useCallback(
-    throttle(
-      (type: MoveDirection) => dispatch({ type }),
-      mergeAnimationDuration * 1.05,
-      { trailing: false },
-    ),
+    (type: MoveDirection) => dispatch({ type }),
     [dispatch],
   );
 

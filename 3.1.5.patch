@@ -1,0 +1,895 @@
+diff --git a/__tests__/compontents/board.test.tsx b/__tests__/compontents/board.test.tsx
+index 3b4d2eb..ed16569 100644
+--- a/__tests__/compontents/board.test.tsx
++++ b/__tests__/compontents/board.test.tsx
+@@ -1,9 +1,10 @@
+ import { render } from "@testing-library/react";
+ import Board from "@/components/board";
+ import GameProvider from "@/context/game-context";
++import { defaultBoardSize } from "@/constants";
+ 
+ describe("Board", () => {
+-  it("should render board with 16 cells", () => {
++  it("should render board with correct number of cells for default size", () => {
+     const { container } = render(
+       <GameProvider>
+         <Board />
+@@ -11,7 +12,7 @@ describe("Board", () => {
+     );
+     const cellElements = container.querySelectorAll(".cell");
+ 
+-    expect(cellElements.length).toEqual(16);
++    expect(cellElements.length).toEqual(defaultBoardSize * defaultBoardSize);
+   });
+ 
+   it("should render board with 2 tiles", async () => {
+diff --git a/__tests__/compontents/tile.test.tsx b/__tests__/compontents/tile.test.tsx
+index d2b966b..beb3eae 100644
+--- a/__tests__/compontents/tile.test.tsx
++++ b/__tests__/compontents/tile.test.tsx
+@@ -1,5 +1,6 @@
+ import { render, waitFor } from "@testing-library/react";
+ import Tile from "@/components/tile";
++import GameProvider from "@/context/game-context";
+ 
+ describe("Tile", () => {
+   beforeEach(() => {
+@@ -7,35 +8,31 @@ describe("Tile", () => {
+   });
+ 
+   it("should render with correct position and value", () => {
+-    // Arrange
+     const position: [number, number] = [1, 2];
+     const value = 2048;
+ 
+-    // Act
+-    const { container } = render(<Tile position={position} value={value} />);
++    const { container } = render(
++      <GameProvider>
++        <Tile position={position} value={value} />
++      </GameProvider>,
++    );
+ 
+-    const tile: HTMLDivElement = container.firstChild as HTMLDivElement;
++    const tile: HTMLDivElement = container.querySelector(".tile") as HTMLDivElement;
+     expect(tile.textContent).toEqual("2048");
+-    expect(tile.className).toEqual("tile tile2048");
+-    expect(tile).toHaveStyle({
+-      left: `72px`,
+-      top: `144px`,
+-      zIndex: `2048`,
+-    });
++    expect(tile.className).toContain("tile2048");
+   });
+ 
+   it("should apply animation when value changes", async () => {
+-    // Arrange
+     const position: [number, number] = [0, 0];
+     const initialValue = 2;
+     const updatedValue = 4;
+ 
+-    // Act
+     const { getByText, rerender } = render(
+-      <Tile position={position} value={initialValue} />,
++      <GameProvider>
++        <Tile position={position} value={initialValue} />
++      </GameProvider>,
+     );
+ 
+-    // Assert initial state
+     const tileElement = getByText(`${initialValue}`);
+     expect(tileElement).toBeInTheDocument();
+ 
+@@ -44,7 +41,11 @@ describe("Tile", () => {
+         transform: "scale(1)",
+       });
+     });
+-    rerender(<Tile position={position} value={updatedValue} />);
++    rerender(
++      <GameProvider>
++        <Tile position={position} value={updatedValue} />
++      </GameProvider>,
++    );
+ 
+     await waitFor(() => {
+       expect(tileElement).toHaveStyle({
+diff --git a/__tests__/reducers/game-reducer.test.ts b/__tests__/reducers/game-reducer.test.ts
+index e06665e..2473287 100644
+--- a/__tests__/reducers/game-reducer.test.ts
++++ b/__tests__/reducers/game-reducer.test.ts
+@@ -689,4 +689,128 @@ describe("gameReducer", () => {
+       expect(stateAfter.tiles[stateAfter.board[1][3]].value).toBe(2);
+     });
+   });
++
++  describe("expand_board", () => {
++    it("should expand board size and add obstacle tiles", () => {
++      const tile1: Tile = {
++        position: [0, 0],
++        value: 2,
++      };
++
++      const { result } = renderHook(() =>
++        useReducer(gameReducer, initialState),
++      );
++      const [, dispatch] = result.current;
++
++      act(() => {
++        dispatch({ type: "create_tile", tile: tile1 });
++      });
++
++      const [stateBefore] = result.current;
++      expect(stateBefore.boardSize).toBe(4);
++      expect(stateBefore.board).toHaveLength(4);
++
++      act(() =>
++        dispatch({
++          type: "expand_board",
++          newSize: 5,
++          obstacleTiles: [[4, 0], [4, 1]],
++        }),
++      );
++
++      const [stateAfter] = result.current;
++      expect(stateAfter.boardSize).toBe(5);
++      expect(stateAfter.board).toHaveLength(5);
++      expect(stateAfter.board[0][0]).toBeDefined();
++      expect(stateAfter.tiles[stateAfter.board[0][0]].value).toBe(2);
++      expect(stateAfter.tiles[stateAfter.board[0][0]].isObstacle).toBeFalsy();
++      expect(stateAfter.tiles[stateAfter.board[0][4]].isObstacle).toBeTruthy();
++      expect(stateAfter.tiles[stateAfter.board[1][4]].isObstacle).toBeTruthy();
++    });
++
++    it("should preserve original tile positions after expansion", () => {
++      const tile1: Tile = {
++        position: [2, 2],
++        value: 8,
++      };
++
++      const { result } = renderHook(() =>
++        useReducer(gameReducer, initialState),
++      );
++      const [, dispatch] = result.current;
++
++      act(() => {
++        dispatch({ type: "create_tile", tile: tile1 });
++        dispatch({
++          type: "expand_board",
++          newSize: 5,
++          obstacleTiles: [[4, 4]],
++        });
++      });
++
++      const [state] = result.current;
++      expect(state.board[2][2]).toBeDefined();
++      expect(state.tiles[state.board[2][2]].position).toEqual([2, 2]);
++      expect(state.tiles[state.board[2][2]].value).toBe(8);
++    });
++  });
++
++  describe("obstacle tiles", () => {
++    it("should not merge obstacle tiles with regular tiles", () => {
++      const tile1: Tile = {
++        position: [0, 0],
++        value: 2,
++      };
++      const obstacle: Tile = {
++        position: [0, 1],
++        value: 2,
++        isObstacle: true,
++      };
++
++      const { result } = renderHook(() =>
++        useReducer(gameReducer, initialState),
++      );
++      const [, dispatch] = result.current;
++
++      act(() => {
++        dispatch({ type: "create_tile", tile: tile1 });
++        dispatch({ type: "create_tile", tile: obstacle });
++        dispatch({ type: "move_up" });
++      });
++
++      const [state] = result.current;
++      expect(state.board[0][0]).toBeDefined();
++      expect(state.board[1][0]).toBeDefined();
++      expect(state.tiles[state.board[0][0]].value).toBe(2);
++      expect(state.tiles[state.board[1][0]].isObstacle).toBeTruthy();
++    });
++
++    it("should block movement of regular tiles", () => {
++      const tile1: Tile = {
++        position: [0, 2],
++        value: 2,
++      };
++      const obstacle: Tile = {
++        position: [0, 0],
++        value: 1,
++        isObstacle: true,
++      };
++
++      const { result } = renderHook(() =>
++        useReducer(gameReducer, initialState),
++      );
++      const [, dispatch] = result.current;
++
++      act(() => {
++        dispatch({ type: "create_tile", tile: tile1 });
++        dispatch({ type: "create_tile", tile: obstacle });
++        dispatch({ type: "move_up" });
++      });
++
++      const [state] = result.current;
++      expect(state.board[1][0]).toBeDefined();
++      expect(state.board[0][0]).toBeDefined();
++      expect(state.tiles[state.board[1][0]].value).toBe(2);
++    });
++  });
+ });
+diff --git a/components/board.tsx b/components/board.tsx
+index 57e2531..082bc53 100644
+--- a/components/board.tsx
++++ b/components/board.tsx
+@@ -7,12 +7,11 @@ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
+ import Splash from "./splash";
+ 
+ export default function Board() {
+-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
++  const { getTiles, moveTiles, startGame, status, boardSize } = useContext(GameContext);
+   const initialized = useRef(false);
+ 
+   const handleKeyDown = useCallback(
+     (e: KeyboardEvent) => {
+-      // disables page scrolling with keyboard arrows
+       e.preventDefault();
+ 
+       switch (e.code) {
+@@ -54,7 +53,7 @@ export default function Board() {
+ 
+   const renderGrid = () => {
+     const cells: JSX.Element[] = [];
+-    const totalCellsCount = 16;
++    const totalCellsCount = boardSize * boardSize;
+ 
+     for (let index = 0; index < totalCellsCount; index += 1) {
+       cells.push(<div className={styles.cell} key={index} />);
+@@ -86,7 +85,7 @@ export default function Board() {
+ 
+   return (
+     <MobileSwiper onSwipe={handleSwipe}>
+-      <div className={styles.board}>
++      <div className={styles.board} style={{ "--board-size": boardSize } as React.CSSProperties}>
+         {status === "won" && <Splash heading="You won!" type="won" />}
+         {status === "lost" && <Splash heading="You lost!" />}
+         <div className={styles.tiles}>{renderTiles()}</div>
+diff --git a/components/tile.tsx b/components/tile.tsx
+index 39964d5..ec2ab69 100644
+--- a/components/tile.tsx
++++ b/components/tile.tsx
+@@ -1,17 +1,18 @@
+-import { useEffect, useState } from "react";
++import { useContext, useEffect, useState } from "react";
+ import { useMediaQuery } from "react-responsive";
+ import {
+   containerWidthMobile,
+   containerWidthDesktop,
+   mergeAnimationDuration,
+-  tileCountPerDimension,
+ } from "@/constants";
+ import { Tile as TileProps } from "@/models/tile";
+ import styles from "@/styles/tile.module.css";
+ import usePreviousProps from "@/hooks/use-previous-props";
++import { GameContext } from "@/context/game-context";
+ 
+-export default function Tile({ position, value }: TileProps) {
++export default function Tile({ position, value, isObstacle }: TileProps) {
+   const isWideScreen = useMediaQuery({ minWidth: 512 });
++  const { boardSize } = useContext(GameContext);
+   const containerWidth = isWideScreen
+     ? containerWidthDesktop
+     : containerWidthMobile;
+@@ -20,8 +21,8 @@ export default function Tile({ position, value }: TileProps) {
+   const previousValue = usePreviousProps<number>(value);
+   const hasChanged = previousValue !== value;
+ 
+-  const positionToPixels = (position: number) =>
+-    (position / tileCountPerDimension) * containerWidth;
++  const positionToPixels = (pos: number) =>
++    (pos / boardSize) * containerWidth;
+ 
+   useEffect(() => {
+     if (hasChanged) {
+@@ -38,8 +39,11 @@ export default function Tile({ position, value }: TileProps) {
+   };
+ 
+   return (
+-    <div className={`${styles.tile} ${styles[`tile${value}`]}`} style={style}>
+-      {value}
++    <div
++      className={`${styles.tile} ${isObstacle ? styles.tileObstacle : styles[`tile${value}`]}`}
++      style={style}
++    >
++      {isObstacle ? "🪨" : value}
+     </div>
+   );
+ }
+diff --git a/constants.ts b/constants.ts
+index 053a40f..1437df2 100644
+--- a/constants.ts
++++ b/constants.ts
+@@ -5,7 +5,14 @@ export const containerWidthMobile = 288; // px
+ 
+ export const containerWidthDesktop = 464; // px
+ 
+-export const tileCountPerDimension = 4;
++export const defaultBoardSize = 4;
++
++export const validBoardSizes: number[] = [4, 5, 6];
++
++/**
++ * Infinite mode
++ */
++export const infiniteModeExpansionThreshold = 4096;
+ 
+ /**
+  * Animations
+@@ -18,3 +25,8 @@ export const moveAnimationDuration = 200; // ms
+  * Game setup
+  */
+ export const gameWinTileValue = 2048;
++
++/**
++ * localStorage
++ */
++export const localStorageKey = "2048-game-state";
+diff --git a/context/game-context.tsx b/context/game-context.tsx
+index 0b93edc..e2f7da3 100644
+--- a/context/game-context.tsx
++++ b/context/game-context.tsx
+@@ -4,12 +4,15 @@ import {
+   useCallback,
+   useEffect,
+   useReducer,
++  useRef,
+ } from "react";
+ import { isNil, throttle } from "lodash";
+ import {
+   gameWinTileValue,
+   mergeAnimationDuration,
+-  tileCountPerDimension,
++  defaultBoardSize,
++  infiniteModeExpansionThreshold,
++  localStorageKey,
+ } from "@/constants";
+ import { Tile } from "@/models/tile";
+ import gameReducer, { initialState } from "@/reducers/game-reducer";
+@@ -19,19 +22,75 @@ type MoveDirection = "move_up" | "move_down" | "move_left" | "move_right";
+ export const GameContext = createContext({
+   score: 0,
+   status: "ongoing",
++  boardSize: defaultBoardSize,
+   moveTiles: (_: MoveDirection) => {},
+   getTiles: () => [] as Tile[],
+   startGame: () => {},
+ });
+ 
++function migrateSavedState(savedState: any) {
++  if (!savedState) return null;
++
++  if (!savedState.boardSize) {
++    savedState.boardSize = defaultBoardSize;
++  }
++
++  if (savedState.tiles) {
++    for (const id of Object.keys(savedState.tiles)) {
++      if (savedState.tiles[id].isObstacle === undefined) {
++        savedState.tiles[id].isObstacle = false;
++      }
++    }
++  }
++
++  return savedState;
++}
++
++function loadStateFromLocalStorage() {
++  try {
++    const saved = localStorage.getItem(localStorageKey);
++    if (saved) {
++      const parsed = JSON.parse(saved);
++      return migrateSavedState(parsed);
++    }
++  } catch {
++    // ignore
++  }
++  return null;
++}
++
++function saveStateToLocalStorage(state: any) {
++  try {
++    localStorage.setItem(localStorageKey, JSON.stringify(state));
++  } catch {
++    // ignore
++  }
++}
++
++function getInitialState() {
++  const saved = loadStateFromLocalStorage();
++  if (saved && saved.board && saved.tiles && saved.tilesByIds) {
++    return {
++      ...initialState,
++      ...saved,
++      hasChanged: false,
++    };
++  }
++  return initialState;
++}
++
+ export default function GameProvider({ children }: PropsWithChildren) {
+-  const [gameState, dispatch] = useReducer(gameReducer, initialState);
++  const [gameState, dispatch] = useReducer(gameReducer, undefined, getInitialState);
++  const hasExpandedRef = useRef(false);
++
++  const getBoardSize = () => gameState.boardSize;
+ 
+   const getEmptyCells = () => {
++    const size = getBoardSize();
+     const results: [number, number][] = [];
+ 
+-    for (let x = 0; x < tileCountPerDimension; x++) {
+-      for (let y = 0; y < tileCountPerDimension; y++) {
++    for (let x = 0; x < size; x++) {
++      for (let y = 0; y < size; y++) {
+         if (isNil(gameState.board[y][x])) {
+           results.push([x, y]);
+         }
+@@ -53,7 +112,7 @@ export default function GameProvider({ children }: PropsWithChildren) {
+   };
+ 
+   const getTiles = () => {
+-    return gameState.tilesByIds.map((tileId) => gameState.tiles[tileId]);
++    return gameState.tilesByIds.map((tileId: string) => gameState.tiles[tileId]);
+   };
+ 
+   const moveTiles = useCallback(
+@@ -67,13 +126,54 @@ export default function GameProvider({ children }: PropsWithChildren) {
+ 
+   const startGame = () => {
+     dispatch({ type: "reset_game" });
+-    dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
+-    dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
++    hasExpandedRef.current = false;
++    setTimeout(() => {
++      dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
++      dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
++    }, 0);
++  };
++
++  const checkForExpansion = () => {
++    if (hasExpandedRef.current) return;
++
++    const tiles = Object.values(gameState.tiles) as Tile[];
++    const maxTileValue = Math.max(
++      ...tiles.map((t) => t.value),
++      0,
++    );
++
++    if (maxTileValue >= infiniteModeExpansionThreshold) {
++      const currentSize = getBoardSize();
++      const newSize = currentSize + 1;
++      const obstacleTiles: [number, number][] = [];
++
++      const newCells: [number, number][] = [];
++      for (let x = 0; x < newSize; x++) {
++        if (x >= currentSize) {
++          for (let y = 0; y < newSize; y++) {
++            newCells.push([x, y]);
++          }
++        } else {
++          for (let y = currentSize; y < newSize; y++) {
++            newCells.push([x, y]);
++          }
++        }
++      }
++
++      const obstacleCount = Math.max(1, Math.floor(newCells.length / 4));
++      const shuffled = newCells.sort(() => Math.random() - 0.5);
++      for (let i = 0; i < obstacleCount && i < shuffled.length; i++) {
++        obstacleTiles.push(shuffled[i]);
++      }
++
++      dispatch({ type: "expand_board", newSize, obstacleTiles });
++      hasExpandedRef.current = true;
++    }
+   };
+ 
+   const checkGameState = () => {
+     const isWon =
+-      Object.values(gameState.tiles).filter((t) => t.value === gameWinTileValue)
++      (Object.values(gameState.tiles) as Tile[]).filter((t) => t.value === gameWinTileValue)
+         .length > 0;
+ 
+     if (isWon) {
+@@ -82,24 +182,35 @@ export default function GameProvider({ children }: PropsWithChildren) {
+     }
+ 
+     const { tiles, board } = gameState;
++    const size = getBoardSize();
+ 
+-    const maxIndex = tileCountPerDimension - 1;
+-    for (let x = 0; x < maxIndex; x += 1) {
+-      for (let y = 0; y < maxIndex; y += 1) {
+-        if (
+-          isNil(gameState.board[x][y]) ||
+-          isNil(gameState.board[x + 1][y]) ||
+-          isNil(gameState.board[x][y + 1])
+-        ) {
++    for (let x = 0; x < size; x += 1) {
++      for (let y = 0; y < size; y += 1) {
++        if (isNil(board[y][x])) {
+           return;
+         }
+ 
+-        if (tiles[board[x][y]].value === tiles[board[x + 1][y]].value) {
+-          return;
++        const currentTile = tiles[board[y][x]];
++        if (currentTile?.isObstacle) continue;
++
++        if (x + 1 < size && !isNil(board[y][x + 1])) {
++          const rightTile = tiles[board[y][x + 1]];
++          if (
++            !rightTile?.isObstacle &&
++            currentTile.value === rightTile.value
++          ) {
++            return;
++          }
+         }
+ 
+-        if (tiles[board[x][y]].value === tiles[board[x][y + 1]].value) {
+-          return;
++        if (y + 1 < size && !isNil(board[y + 1]?.[x])) {
++          const downTile = tiles[board[y + 1][x]];
++          if (
++            !downTile?.isObstacle &&
++            currentTile.value === downTile.value
++          ) {
++            return;
++          }
+         }
+       }
+     }
+@@ -118,15 +229,21 @@ export default function GameProvider({ children }: PropsWithChildren) {
+ 
+   useEffect(() => {
+     if (!gameState.hasChanged) {
++      checkForExpansion();
+       checkGameState();
+     }
+   }, [gameState.hasChanged]);
+ 
++  useEffect(() => {
++    saveStateToLocalStorage(gameState);
++  }, [gameState]);
++
+   return (
+     <GameContext.Provider
+       value={{
+         score: gameState.score,
+         status: gameState.status,
++        boardSize: gameState.boardSize,
+         getTiles,
+         moveTiles,
+         startGame,
+diff --git a/models/tile.ts b/models/tile.ts
+index df4c620..6bbc49a 100644
+--- a/models/tile.ts
++++ b/models/tile.ts
+@@ -2,6 +2,7 @@ export type Tile = {
+   id?: string;
+   position: [number, number];
+   value: number;
++  isObstacle?: boolean;
+ };
+ 
+ export type TileMap = { [id: string]: Tile };
+diff --git a/reducers/game-reducer.ts b/reducers/game-reducer.ts
+index 47d6226..f1794f8 100644
+--- a/reducers/game-reducer.ts
++++ b/reducers/game-reducer.ts
+@@ -1,6 +1,6 @@
+ import { flattenDeep, isEqual, isNil } from "lodash";
+ import { uid } from "uid";
+-import { tileCountPerDimension } from "@/constants";
++import { defaultBoardSize } from "@/constants";
+ import { Tile, TileMap } from "@/models/tile";
+ 
+ type GameStatus = "ongoing" | "won" | "lost";
+@@ -12,6 +12,7 @@ type State = {
+   hasChanged: boolean;
+   score: number;
+   status: GameStatus;
++  boardSize: number;
+ };
+ type Action =
+   | { type: "create_tile"; tile: Tile }
+@@ -21,25 +22,27 @@ type Action =
+   | { type: "move_left" }
+   | { type: "move_right" }
+   | { type: "reset_game" }
+-  | { type: "update_status"; status: GameStatus };
++  | { type: "update_status"; status: GameStatus }
++  | { type: "expand_board"; newSize: number; obstacleTiles: [number, number][] };
+ 
+-function createBoard() {
++function createBoard(size: number) {
+   const board: string[][] = [];
+ 
+-  for (let i = 0; i < tileCountPerDimension; i += 1) {
+-    board[i] = new Array(tileCountPerDimension).fill(undefined);
++  for (let i = 0; i < size; i += 1) {
++    board[i] = new Array(size).fill(undefined);
+   }
+ 
+   return board;
+ }
+ 
+ export const initialState: State = {
+-  board: createBoard(),
++  board: createBoard(defaultBoardSize),
+   tiles: {},
+   tilesByIds: [],
+   hasChanged: false,
+   score: 0,
+   status: "ongoing",
++  boardSize: defaultBoardSize,
+ };
+ 
+ export default function gameReducer(
+@@ -50,7 +53,7 @@ export default function gameReducer(
+     case "clean_up": {
+       const flattenBoard = flattenDeep(state.board);
+       const newTiles: TileMap = flattenBoard.reduce(
+-        (result, tileId: string) => {
++        (result: TileMap, tileId: string) => {
+           if (isNil(tileId)) {
+             return result;
+           }
+@@ -73,7 +76,7 @@ export default function gameReducer(
+     case "create_tile": {
+       const tileId = uid();
+       const [x, y] = action.tile.position;
+-      const newBoard = JSON.parse(JSON.stringify(state.board));
++      const newBoard = state.board.map((row) => [...row]);
+       newBoard[y][x] = tileId;
+ 
+       return {
+@@ -90,21 +93,26 @@ export default function gameReducer(
+       };
+     }
+     case "move_up": {
+-      const newBoard = createBoard();
++      const { boardSize } = state;
++      const newBoard = createBoard(boardSize);
+       const newTiles: TileMap = {};
+       let hasChanged = false;
+       let { score } = state;
+ 
+-      for (let x = 0; x < tileCountPerDimension; x++) {
++      for (let x = 0; x < boardSize; x++) {
+         let newY = 0;
+         let previousTile: Tile | undefined;
+ 
+-        for (let y = 0; y < tileCountPerDimension; y++) {
++        for (let y = 0; y < boardSize; y++) {
+           const tileId = state.board[y][x];
+           const currentTile = state.tiles[tileId];
+ 
+           if (!isNil(tileId)) {
+-            if (previousTile?.value === currentTile.value) {
++            if (
++              !currentTile.isObstacle &&
++              previousTile?.value === currentTile.value &&
++              !previousTile.isObstacle
++            ) {
+               score += previousTile.value * 2;
+               newTiles[previousTile.id as string] = {
+                 ...previousTile,
+@@ -141,21 +149,26 @@ export default function gameReducer(
+       };
+     }
+     case "move_down": {
+-      const newBoard = createBoard();
++      const { boardSize } = state;
++      const newBoard = createBoard(boardSize);
+       const newTiles: TileMap = {};
+       let hasChanged = false;
+       let { score } = state;
+ 
+-      for (let x = 0; x < tileCountPerDimension; x++) {
+-        let newY = tileCountPerDimension - 1;
++      for (let x = 0; x < boardSize; x++) {
++        let newY = boardSize - 1;
+         let previousTile: Tile | undefined;
+ 
+-        for (let y = tileCountPerDimension - 1; y >= 0; y--) {
++        for (let y = boardSize - 1; y >= 0; y--) {
+           const tileId = state.board[y][x];
+           const currentTile = state.tiles[tileId];
+ 
+           if (!isNil(tileId)) {
+-            if (previousTile?.value === currentTile.value) {
++            if (
++              !currentTile.isObstacle &&
++              previousTile?.value === currentTile.value &&
++              !previousTile.isObstacle
++            ) {
+               score += previousTile.value * 2;
+               newTiles[previousTile.id as string] = {
+                 ...previousTile,
+@@ -192,21 +205,26 @@ export default function gameReducer(
+       };
+     }
+     case "move_left": {
+-      const newBoard = createBoard();
++      const { boardSize } = state;
++      const newBoard = createBoard(boardSize);
+       const newTiles: TileMap = {};
+       let hasChanged = false;
+       let { score } = state;
+ 
+-      for (let y = 0; y < tileCountPerDimension; y++) {
++      for (let y = 0; y < boardSize; y++) {
+         let newX = 0;
+         let previousTile: Tile | undefined;
+ 
+-        for (let x = 0; x < tileCountPerDimension; x++) {
++        for (let x = 0; x < boardSize; x++) {
+           const tileId = state.board[y][x];
+           const currentTile = state.tiles[tileId];
+ 
+           if (!isNil(tileId)) {
+-            if (previousTile?.value === currentTile.value) {
++            if (
++              !currentTile.isObstacle &&
++              previousTile?.value === currentTile.value &&
++              !previousTile.isObstacle
++            ) {
+               score += previousTile.value * 2;
+               newTiles[previousTile.id as string] = {
+                 ...previousTile,
+@@ -243,21 +261,26 @@ export default function gameReducer(
+       };
+     }
+     case "move_right": {
+-      const newBoard = createBoard();
++      const { boardSize } = state;
++      const newBoard = createBoard(boardSize);
+       const newTiles: TileMap = {};
+       let hasChanged = false;
+       let { score } = state;
+ 
+-      for (let y = 0; y < tileCountPerDimension; y++) {
+-        let newX = tileCountPerDimension - 1;
++      for (let y = 0; y < boardSize; y++) {
++        let newX = boardSize - 1;
+         let previousTile: Tile | undefined;
+ 
+-        for (let x = tileCountPerDimension - 1; x >= 0; x--) {
++        for (let x = boardSize - 1; x >= 0; x--) {
+           const tileId = state.board[y][x];
+           const currentTile = state.tiles[tileId];
+ 
+           if (!isNil(tileId)) {
+-            if (previousTile?.value === currentTile.value) {
++            if (
++              !currentTile.isObstacle &&
++              previousTile?.value === currentTile.value &&
++              !previousTile.isObstacle
++            ) {
+               score += previousTile.value * 2;
+               newTiles[previousTile.id as string] = {
+                 ...previousTile,
+@@ -300,6 +323,39 @@ export default function gameReducer(
+         ...state,
+         status: action.status,
+       };
++    case "expand_board": {
++      const { newSize, obstacleTiles } = action;
++      const newBoard = createBoard(newSize);
++
++      for (let y = 0; y < state.boardSize; y++) {
++        for (let x = 0; x < state.boardSize; x++) {
++          newBoard[y][x] = state.board[y][x];
++        }
++      }
++
++      const newTiles = { ...state.tiles };
++      const obstacleTileIds: string[] = [];
++
++      for (const [ox, oy] of obstacleTiles) {
++        const tileId = uid();
++        newBoard[oy][ox] = tileId;
++        newTiles[tileId] = {
++          id: tileId,
++          position: [ox, oy],
++          value: 1,
++          isObstacle: true,
++        };
++        obstacleTileIds.push(tileId);
++      }
++
++      return {
++        ...state,
++        board: newBoard,
++        tiles: newTiles,
++        tilesByIds: [...state.tilesByIds, ...obstacleTileIds],
++        boardSize: newSize,
++      };
++    }
+     default:
+       return state;
+   }
+diff --git a/styles/board.module.css b/styles/board.module.css
+index f2088b2..f023b8f 100644
+--- a/styles/board.module.css
++++ b/styles/board.module.css
+@@ -1,6 +1,9 @@
+ .board {
+   position: relative;
+-  width: calc(var(--pixel-size) * 8 * 4 + var(--pixel-size) * 5);
++  --board-size: 4;
++  width: calc(
++    var(--pixel-size) * 8 * var(--board-size) + var(--pixel-size) * 0.5 * (var(--board-size) + 1)
++  );
+ }
+ 
+ .grid {
+@@ -9,6 +12,9 @@
+   background: var(--secondary-background);
+   border: calc(var(--pixel-size) * 0.5) solid var(--secondary-background);
+   border-radius: calc(var(--pixel-size) * 0.75);
++  width: calc(
++    var(--pixel-size) * 8 * var(--board-size) + var(--pixel-size) * 0.5 * (var(--board-size) - 1)
++  );
+ }
+ 
+ .cell {
+@@ -27,15 +33,21 @@
+   top: 0;
+   right: 0;
+   bottom: 0;
++  pointer-events: none;
+ }
+ 
+ @media (min-width: 512px) {
+   .board {
+-    width: calc(var(--pixel-size) * 12.5 * 4 + var(--pixel-size) * 10);
++    width: calc(
++      var(--pixel-size) * 12.5 * var(--board-size) + var(--pixel-size) * 1 * (var(--board-size) + 1)
++    );
+   }
+ 
+   .grid {
+     border: calc(var(--pixel-size) * 1) solid var(--secondary-background);
++    width: calc(
++      var(--pixel-size) * 12.5 * var(--board-size) + var(--pixel-size) * 1 * (var(--board-size) - 1)
++    );
+   }
+ 
+   .cell {
+diff --git a/styles/tile.module.css b/styles/tile.module.css
+index d710fbb..4c47ce0 100644
+--- a/styles/tile.module.css
++++ b/styles/tile.module.css
+@@ -135,3 +135,12 @@
+     0 0 30px 10px rgba(243, 215, 116, 0.55556),
+     inset 0 0 0 1px rgba(255, 255, 255, 0.33333);
+ }
++
++.tileObstacle {
++  background: #555;
++  color: var(--secondary-text-color);
++  cursor: default;
++  box-shadow:
++    0 0 30px 10px rgba(0, 0, 0, 0.3),
++    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
++}

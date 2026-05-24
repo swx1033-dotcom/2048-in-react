@@ -1,6 +1,6 @@
 import { flattenDeep, isEqual, isNil } from "lodash";
 import { uid } from "uid";
-import { tileCountPerDimension } from "@/constants";
+import { defaultBoardSize } from "@/constants";
 import { Tile, TileMap } from "@/models/tile";
 
 type GameStatus = "ongoing" | "won" | "lost";
@@ -12,6 +12,7 @@ type State = {
   hasChanged: boolean;
   score: number;
   status: GameStatus;
+  boardSize: number;
 };
 type Action =
   | { type: "create_tile"; tile: Tile }
@@ -21,25 +22,27 @@ type Action =
   | { type: "move_left" }
   | { type: "move_right" }
   | { type: "reset_game" }
-  | { type: "update_status"; status: GameStatus };
+  | { type: "update_status"; status: GameStatus }
+  | { type: "expand_board"; newSize: number; obstacleTiles: [number, number][] };
 
-function createBoard() {
+function createBoard(size: number) {
   const board: string[][] = [];
 
-  for (let i = 0; i < tileCountPerDimension; i += 1) {
-    board[i] = new Array(tileCountPerDimension).fill(undefined);
+  for (let i = 0; i < size; i += 1) {
+    board[i] = new Array(size).fill(undefined);
   }
 
   return board;
 }
 
 export const initialState: State = {
-  board: createBoard(),
+  board: createBoard(defaultBoardSize),
   tiles: {},
   tilesByIds: [],
   hasChanged: false,
   score: 0,
   status: "ongoing",
+  boardSize: defaultBoardSize,
 };
 
 export default function gameReducer(
@@ -50,7 +53,7 @@ export default function gameReducer(
     case "clean_up": {
       const flattenBoard = flattenDeep(state.board);
       const newTiles: TileMap = flattenBoard.reduce(
-        (result, tileId: string) => {
+        (result: TileMap, tileId: string) => {
           if (isNil(tileId)) {
             return result;
           }
@@ -73,7 +76,7 @@ export default function gameReducer(
     case "create_tile": {
       const tileId = uid();
       const [x, y] = action.tile.position;
-      const newBoard = JSON.parse(JSON.stringify(state.board));
+      const newBoard = state.board.map((row) => [...row]);
       newBoard[y][x] = tileId;
 
       return {
@@ -90,21 +93,26 @@ export default function gameReducer(
       };
     }
     case "move_up": {
-      const newBoard = createBoard();
+      const { boardSize } = state;
+      const newBoard = createBoard(boardSize);
       const newTiles: TileMap = {};
       let hasChanged = false;
       let { score } = state;
 
-      for (let x = 0; x < tileCountPerDimension; x++) {
+      for (let x = 0; x < boardSize; x++) {
         let newY = 0;
         let previousTile: Tile | undefined;
 
-        for (let y = 0; y < tileCountPerDimension; y++) {
+        for (let y = 0; y < boardSize; y++) {
           const tileId = state.board[y][x];
           const currentTile = state.tiles[tileId];
 
           if (!isNil(tileId)) {
-            if (previousTile?.value === currentTile.value) {
+            if (
+              !currentTile.isObstacle &&
+              previousTile?.value === currentTile.value &&
+              !previousTile.isObstacle
+            ) {
               score += previousTile.value * 2;
               newTiles[previousTile.id as string] = {
                 ...previousTile,
@@ -141,21 +149,26 @@ export default function gameReducer(
       };
     }
     case "move_down": {
-      const newBoard = createBoard();
+      const { boardSize } = state;
+      const newBoard = createBoard(boardSize);
       const newTiles: TileMap = {};
       let hasChanged = false;
       let { score } = state;
 
-      for (let x = 0; x < tileCountPerDimension; x++) {
-        let newY = tileCountPerDimension - 1;
+      for (let x = 0; x < boardSize; x++) {
+        let newY = boardSize - 1;
         let previousTile: Tile | undefined;
 
-        for (let y = tileCountPerDimension - 1; y >= 0; y--) {
+        for (let y = boardSize - 1; y >= 0; y--) {
           const tileId = state.board[y][x];
           const currentTile = state.tiles[tileId];
 
           if (!isNil(tileId)) {
-            if (previousTile?.value === currentTile.value) {
+            if (
+              !currentTile.isObstacle &&
+              previousTile?.value === currentTile.value &&
+              !previousTile.isObstacle
+            ) {
               score += previousTile.value * 2;
               newTiles[previousTile.id as string] = {
                 ...previousTile,
@@ -192,21 +205,26 @@ export default function gameReducer(
       };
     }
     case "move_left": {
-      const newBoard = createBoard();
+      const { boardSize } = state;
+      const newBoard = createBoard(boardSize);
       const newTiles: TileMap = {};
       let hasChanged = false;
       let { score } = state;
 
-      for (let y = 0; y < tileCountPerDimension; y++) {
+      for (let y = 0; y < boardSize; y++) {
         let newX = 0;
         let previousTile: Tile | undefined;
 
-        for (let x = 0; x < tileCountPerDimension; x++) {
+        for (let x = 0; x < boardSize; x++) {
           const tileId = state.board[y][x];
           const currentTile = state.tiles[tileId];
 
           if (!isNil(tileId)) {
-            if (previousTile?.value === currentTile.value) {
+            if (
+              !currentTile.isObstacle &&
+              previousTile?.value === currentTile.value &&
+              !previousTile.isObstacle
+            ) {
               score += previousTile.value * 2;
               newTiles[previousTile.id as string] = {
                 ...previousTile,
@@ -243,21 +261,26 @@ export default function gameReducer(
       };
     }
     case "move_right": {
-      const newBoard = createBoard();
+      const { boardSize } = state;
+      const newBoard = createBoard(boardSize);
       const newTiles: TileMap = {};
       let hasChanged = false;
       let { score } = state;
 
-      for (let y = 0; y < tileCountPerDimension; y++) {
-        let newX = tileCountPerDimension - 1;
+      for (let y = 0; y < boardSize; y++) {
+        let newX = boardSize - 1;
         let previousTile: Tile | undefined;
 
-        for (let x = tileCountPerDimension - 1; x >= 0; x--) {
+        for (let x = boardSize - 1; x >= 0; x--) {
           const tileId = state.board[y][x];
           const currentTile = state.tiles[tileId];
 
           if (!isNil(tileId)) {
-            if (previousTile?.value === currentTile.value) {
+            if (
+              !currentTile.isObstacle &&
+              previousTile?.value === currentTile.value &&
+              !previousTile.isObstacle
+            ) {
               score += previousTile.value * 2;
               newTiles[previousTile.id as string] = {
                 ...previousTile,
@@ -300,6 +323,39 @@ export default function gameReducer(
         ...state,
         status: action.status,
       };
+    case "expand_board": {
+      const { newSize, obstacleTiles } = action;
+      const newBoard = createBoard(newSize);
+
+      for (let y = 0; y < state.boardSize; y++) {
+        for (let x = 0; x < state.boardSize; x++) {
+          newBoard[y][x] = state.board[y][x];
+        }
+      }
+
+      const newTiles = { ...state.tiles };
+      const obstacleTileIds: string[] = [];
+
+      for (const [ox, oy] of obstacleTiles) {
+        const tileId = uid();
+        newBoard[oy][ox] = tileId;
+        newTiles[tileId] = {
+          id: tileId,
+          position: [ox, oy],
+          value: 1,
+          isObstacle: true,
+        };
+        obstacleTileIds.push(tileId);
+      }
+
+      return {
+        ...state,
+        board: newBoard,
+        tiles: newTiles,
+        tilesByIds: [...state.tilesByIds, ...obstacleTileIds],
+        boardSize: newSize,
+      };
+    }
     default:
       return state;
   }

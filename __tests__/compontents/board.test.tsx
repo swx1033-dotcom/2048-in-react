@@ -1,9 +1,10 @@
 import { render } from "@testing-library/react";
 import Board from "@/components/board";
 import GameProvider from "@/context/game-context";
+import { defaultBoardSize } from "@/constants";
 
 describe("Board", () => {
-  it("should render board with 16 cells", () => {
+  it("should render board with correct number of cells for default size", () => {
     const { container } = render(
       <GameProvider>
         <Board />
@@ -11,7 +12,7 @@ describe("Board", () => {
     );
     const cellElements = container.querySelectorAll(".cell");
 
-    expect(cellElements.length).toEqual(16);
+    expect(cellElements.length).toEqual(defaultBoardSize * defaultBoardSize);
   });
 
   it("should render board with 2 tiles", async () => {

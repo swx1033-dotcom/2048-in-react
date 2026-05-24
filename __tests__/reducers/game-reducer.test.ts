@@ -689,4 +689,128 @@ describe("gameReducer", () => {
       expect(stateAfter.tiles[stateAfter.board[1][3]].value).toBe(2);
     });
   });
+
+  describe("expand_board", () => {
+    it("should expand board size and add obstacle tiles", () => {
+      const tile1: Tile = {
+        position: [0, 0],
+        value: 2,
+      };
+
+      const { result } = renderHook(() =>
+        useReducer(gameReducer, initialState),
+      );
+      const [, dispatch] = result.current;
+
+      act(() => {
+        dispatch({ type: "create_tile", tile: tile1 });
+      });
+
+      const [stateBefore] = result.current;
+      expect(stateBefore.boardSize).toBe(4);
+      expect(stateBefore.board).toHaveLength(4);
+
+      act(() =>
+        dispatch({
+          type: "expand_board",
+          newSize: 5,
+          obstacleTiles: [[4, 0], [4, 1]],
+        }),
+      );
+
+      const [stateAfter] = result.current;
+      expect(stateAfter.boardSize).toBe(5);
+      expect(stateAfter.board).toHaveLength(5);
+      expect(stateAfter.board[0][0]).toBeDefined();
+      expect(stateAfter.tiles[stateAfter.board[0][0]].value).toBe(2);
+      expect(stateAfter.tiles[stateAfter.board[0][0]].isObstacle).toBeFalsy();
+      expect(stateAfter.tiles[stateAfter.board[0][4]].isObstacle).toBeTruthy();
+      expect(stateAfter.tiles[stateAfter.board[1][4]].isObstacle).toBeTruthy();
+    });
+
+    it("should preserve original tile positions after expansion", () => {
+      const tile1: Tile = {
+        position: [2, 2],
+        value: 8,
+      };
+
+      const { result } = renderHook(() =>
+        useReducer(gameReducer, initialState),
+      );
+      const [, dispatch] = result.current;
+
+      act(() => {
+        dispatch({ type: "create_tile", tile: tile1 });
+        dispatch({
+          type: "expand_board",
+          newSize: 5,
+          obstacleTiles: [[4, 4]],
+        });
+      });
+
+      const [state] = result.current;
+      expect(state.board[2][2]).toBeDefined();
+      expect(state.tiles[state.board[2][2]].position).toEqual([2, 2]);
+      expect(state.tiles[state.board[2][2]].value).toBe(8);
+    });
+  });
+
+  describe("obstacle tiles", () => {
+    it("should not merge obstacle tiles with regular tiles", () => {
+      const tile1: Tile = {
+        position: [0, 0],
+        value: 2,
+      };
+      const obstacle: Tile = {
+        position: [0, 1],
+        value: 2,
+        isObstacle: true,
+      };
+
+      const { result } = renderHook(() =>
+        useReducer(gameReducer, initialState),
+      );
+      const [, dispatch] = result.current;
+
+      act(() => {
+        dispatch({ type: "create_tile", tile: tile1 });
+        dispatch({ type: "create_tile", tile: obstacle });
+        dispatch({ type: "move_up" });
+      });
+
+      const [state] = result.current;
+      expect(state.board[0][0]).toBeDefined();
+      expect(state.board[1][0]).toBeDefined();
+      expect(state.tiles[state.board[0][0]].value).toBe(2);
+      expect(state.tiles[state.board[1][0]].isObstacle).toBeTruthy();
+    });
+
+    it("should block movement of regular tiles", () => {
+      const tile1: Tile = {
+        position: [0, 2],
+        value: 2,
+      };
+      const obstacle: Tile = {
+        position: [0, 0],
+        value: 1,
+        isObstacle: true,
+      };
+
+      const { result } = renderHook(() =>
+        useReducer(gameReducer, initialState),
+      );
+      const [, dispatch] = result.current;
+
+      act(() => {
+        dispatch({ type: "create_tile", tile: tile1 });
+        dispatch({ type: "create_tile", tile: obstacle });
+        dispatch({ type: "move_up" });
+      });
+
+      const [state] = result.current;
+      expect(state.board[1][0]).toBeDefined();
+      expect(state.board[0][0]).toBeDefined();
+      expect(state.tiles[state.board[1][0]].value).toBe(2);
+    });
+  });
 });

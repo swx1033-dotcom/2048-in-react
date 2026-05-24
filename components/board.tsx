@@ -7,12 +7,11 @@ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
 import Splash from "./splash";
 
 export default function Board() {
-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
+  const { getTiles, moveTiles, startGame, status, boardSize } = useContext(GameContext);
   const initialized = useRef(false);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // disables page scrolling with keyboard arrows
       e.preventDefault();
 
       switch (e.code) {
@@ -54,7 +53,7 @@ export default function Board() {
 
   const renderGrid = () => {
     const cells: JSX.Element[] = [];
-    const totalCellsCount = 16;
+    const totalCellsCount = boardSize * boardSize;
 
     for (let index = 0; index < totalCellsCount; index += 1) {
       cells.push(<div className={styles.cell} key={index} />);
@@ -86,7 +85,7 @@ export default function Board() {
 
   return (
     <MobileSwiper onSwipe={handleSwipe}>
-      <div className={styles.board}>
+      <div className={styles.board} style={{ "--board-size": boardSize } as React.CSSProperties}>
         {status === "won" && <Splash heading="You won!" type="won" />}
         {status === "lost" && <Splash heading="You lost!" />}
         <div className={styles.tiles}>{renderTiles()}</div>

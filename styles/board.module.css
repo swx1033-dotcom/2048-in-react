@@ -1,6 +1,9 @@
 .board {
   position: relative;
-  width: calc(var(--pixel-size) * 8 * 4 + var(--pixel-size) * 5);
+  --board-size: 4;
+  width: calc(
+    var(--pixel-size) * 8 * var(--board-size) + var(--pixel-size) * 0.5 * (var(--board-size) + 1)
+  );
 }
 
 .grid {
@@ -9,6 +12,9 @@
   background: var(--secondary-background);
   border: calc(var(--pixel-size) * 0.5) solid var(--secondary-background);
   border-radius: calc(var(--pixel-size) * 0.75);
+  width: calc(
+    var(--pixel-size) * 8 * var(--board-size) + var(--pixel-size) * 0.5 * (var(--board-size) - 1)
+  );
 }
 
 .cell {
@@ -27,15 +33,21 @@
   top: 0;
   right: 0;
   bottom: 0;
+  pointer-events: none;
 }
 
 @media (min-width: 512px) {
   .board {
-    width: calc(var(--pixel-size) * 12.5 * 4 + var(--pixel-size) * 10);
+    width: calc(
+      var(--pixel-size) * 12.5 * var(--board-size) + var(--pixel-size) * 1 * (var(--board-size) + 1)
+    );
   }
 
   .grid {
     border: calc(var(--pixel-size) * 1) solid var(--secondary-background);
+    width: calc(
+      var(--pixel-size) * 12.5 * var(--board-size) + var(--pixel-size) * 1 * (var(--board-size) - 1)
+    );
   }
 
   .cell {

@@ -1,17 +1,18 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useMediaQuery } from "react-responsive";
 import {
   containerWidthMobile,
   containerWidthDesktop,
   mergeAnimationDuration,
-  tileCountPerDimension,
 } from "@/constants";
 import { Tile as TileProps } from "@/models/tile";
 import styles from "@/styles/tile.module.css";
 import usePreviousProps from "@/hooks/use-previous-props";
+import { GameContext } from "@/context/game-context";
 
-export default function Tile({ position, value }: TileProps) {
+export default function Tile({ position, value, isObstacle }: TileProps) {
   const isWideScreen = useMediaQuery({ minWidth: 512 });
+  const { boardSize } = useContext(GameContext);
   const containerWidth = isWideScreen
     ? containerWidthDesktop
     : containerWidthMobile;
@@ -20,8 +21,8 @@ export default function Tile({ position, value }: TileProps) {
   const previousValue = usePreviousProps<number>(value);
   const hasChanged = previousValue !== value;
 
-  const positionToPixels = (position: number) =>
-    (position / tileCountPerDimension) * containerWidth;
+  const positionToPixels = (pos: number) =>
+    (pos / boardSize) * containerWidth;
 
   useEffect(() => {
     if (hasChanged) {
@@ -38,8 +39,11 @@ export default function Tile({ position, value }: TileProps) {
   };
 
   return (
-    <div className={`${styles.tile} ${styles[`tile${value}`]}`} style={style}>
-      {value}
+    <div
+      className={`${styles.tile} ${isObstacle ? styles.tileObstacle : styles[`tile${value}`]}`}
+      style={style}
+    >
+      {isObstacle ? "🪨" : value}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useRef } from "react";
+import { ChangeEvent, useCallback, useContext, useEffect, useRef } from "react";
 import { Tile as TileModel } from "@/models/tile";
 import styles from "@/styles/board.module.css";
 import Tile from "./tile";
@@ -7,12 +7,23 @@ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
 import Splash from "./splash";
 
 export default function Board() {
-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
+  const {
+    activeStep,
+    commitTimelinePreview,
+    currentStep,
+    getTiles,
+    isPreviewing,
+    isTimelineLocked,
+    moveTiles,
+    previewTimelineStep,
+    startGame,
+    status,
+    totalSteps,
+  } = useContext(GameContext);
   const initialized = useRef(false);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // disables page scrolling with keyboard arrows
       e.preventDefault();
 
       switch (e.code) {
@@ -35,21 +46,30 @@ export default function Board() {
 
   const handleSwipe = useCallback(
     ({ deltaX, deltaY }: SwipeInput) => {
+      if (isPreviewing || isTimelineLocked) {
+        return;
+      }
+
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
         if (deltaX > 0) {
           moveTiles("move_right");
         } else {
           moveTiles("move_left");
         }
+      } else if (deltaY > 0) {
+        moveTiles("move_down");
       } else {
-        if (deltaY > 0) {
-          moveTiles("move_down");
-        } else {
-          moveTiles("move_up");
-        }
+        moveTiles("move_up");
       }
     },
-    [moveTiles],
+    [isPreviewing, isTimelineLocked, moveTiles],
+  );
+
+  const handleTimelineChange = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      previewTimelineStep(Number(e.target.value));
+    },
+    [previewTimelineStep],
   );
 
   const renderGrid = () => {
@@ -65,7 +85,7 @@ export default function Board() {
 
   const renderTiles = () => {
     return getTiles().map((tile: TileModel) => (
-      <Tile key={`${tile.id}`} {...tile} />
+      <Tile key={`${tile.id}`} animationsEnabled={!isPreviewing} {...tile} />
     ));
   };
 
@@ -86,11 +106,37 @@ export default function Board() {
 
   return (
     <MobileSwiper onSwipe={handleSwipe}>
-      <div className={styles.board}>
-        {status === "won" && <Splash heading="You won!" type="won" />}
-        {status === "lost" && <Splash heading="You lost!" />}
-        <div className={styles.tiles}>{renderTiles()}</div>
-        <div className={styles.grid}>{renderGrid()}</div>
+      <div className={styles.wrapper}>
+        <div className={styles.board}>
+          {status === "won" && <Splash heading="You won!" type="won" />}
+          {status === "lost" && <Splash heading="You lost!" />}
+          <div className={styles.tiles}>{renderTiles()}</div>
+          <div className={styles.grid}>{renderGrid()}</div>
+        </div>
+        <div className={styles.timeline}>
+          <div className={styles.timelineHeader}>
+            <span>Timeline</span>
+            <span>
+              {activeStep + 1}/{totalSteps}
+              {isPreviewing && activeStep !== currentStep ? " Previewing" : ""}
+            </span>
+          </div>
+          <input
+            aria-label="Timeline"
+            className={styles.timelineSlider}
+            disabled={isTimelineLocked}
+            max={Math.max(totalSteps - 1, 0)}
+            min={0}
+            onBlur={commitTimelinePreview}
+            onChange={handleTimelineChange}
+            onKeyUp={commitTimelinePreview}
+            onMouseUp={commitTimelinePreview}
+            onTouchEnd={commitTimelinePreview}
+            step={1}
+            type="range"
+            value={activeStep}
+          />
+        </div>
       </div>
     </MobileSwiper>
   );

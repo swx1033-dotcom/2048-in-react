@@ -14,6 +14,10 @@
   transition-duration: 200ms, 200ms, 100ms;
 }
 
+.staticTile {
+  transition: none;
+}
+
 @media (min-width: 512px) {
   .tile {
     width: calc(var(--pixel-size) * 12.5);
@@ -24,7 +28,6 @@
   }
 }
 
-/* -=-=-=- START OF TEXT COLOR -=-=-=- */
 .tile8,
 .tile16,
 .tile32,
@@ -38,9 +41,7 @@
 .tile8192 {
   color: var(--secondary-text-color);
 }
-/* -=-=-=-= END OF TEXT COLOR =-=-=-=- */
 
-/* -=-=-=- START OF TEXT SIZE -=-=-=- */
 .tile128,
 .tile256,
 .tile512 {
@@ -68,7 +69,6 @@
     font-size: calc(var(--pixel-size) * 4);
   }
 }
-/* -=-=-=-= END OF TEXT SIZE =-=-=-=- */
 
 .tile2 {
   box-shadow:

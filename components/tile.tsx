@@ -10,7 +10,15 @@ import { Tile as TileProps } from "@/models/tile";
 import styles from "@/styles/tile.module.css";
 import usePreviousProps from "@/hooks/use-previous-props";
 
-export default function Tile({ position, value }: TileProps) {
+type Props = TileProps & {
+  animationsEnabled?: boolean;
+};
+
+export default function Tile({
+  animationsEnabled = true,
+  position,
+  value,
+}: Props) {
   const isWideScreen = useMediaQuery({ minWidth: 512 });
   const containerWidth = isWideScreen
     ? containerWidthDesktop
@@ -20,25 +28,39 @@ export default function Tile({ position, value }: TileProps) {
   const previousValue = usePreviousProps<number>(value);
   const hasChanged = previousValue !== value;
 
-  const positionToPixels = (position: number) =>
-    (position / tileCountPerDimension) * containerWidth;
+  const positionToPixels = (positionValue: number) =>
+    (positionValue / tileCountPerDimension) * containerWidth;
 
   useEffect(() => {
+    if (!animationsEnabled) {
+      setScale(1);
+      return;
+    }
+
     if (hasChanged) {
       setScale(1.1);
-      setTimeout(() => setScale(1), mergeAnimationDuration);
+      const timeoutId = window.setTimeout(() => setScale(1), mergeAnimationDuration);
+
+      return () => {
+        window.clearTimeout(timeoutId);
+      };
     }
-  }, [hasChanged]);
+  }, [animationsEnabled, hasChanged]);
 
   const style = {
     left: positionToPixels(position[0]),
     top: positionToPixels(position[1]),
-    transform: `scale(${scale})`,
+    transform: `scale(${animationsEnabled ? scale : 1})`,
     zIndex: value,
   };
 
   return (
-    <div className={`${styles.tile} ${styles[`tile${value}`]}`} style={style}>
+    <div
+      className={`${styles.tile} ${styles[`tile${value}`]} ${
+        !animationsEnabled ? styles.staticTile : ""
+      }`}
+      style={style}
+    >
       {value}
     </div>
   );

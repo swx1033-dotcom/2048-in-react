@@ -1,0 +1,1127 @@
+diff --git a/components/board.tsx b/components/board.tsx
+index 57e2531..019e2c0 100644
+--- a/components/board.tsx
++++ b/components/board.tsx
+@@ -1,4 +1,4 @@
+-import { useCallback, useContext, useEffect, useRef } from "react";
++import { ChangeEvent, useCallback, useContext, useEffect, useRef } from "react";
+ import { Tile as TileModel } from "@/models/tile";
+ import styles from "@/styles/board.module.css";
+ import Tile from "./tile";
+@@ -7,12 +7,23 @@ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
+ import Splash from "./splash";
+ 
+ export default function Board() {
+-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
++  const {
++    activeStep,
++    commitTimelinePreview,
++    currentStep,
++    getTiles,
++    isPreviewing,
++    isTimelineLocked,
++    moveTiles,
++    previewTimelineStep,
++    startGame,
++    status,
++    totalSteps,
++  } = useContext(GameContext);
+   const initialized = useRef(false);
+ 
+   const handleKeyDown = useCallback(
+     (e: KeyboardEvent) => {
+-      // disables page scrolling with keyboard arrows
+       e.preventDefault();
+ 
+       switch (e.code) {
+@@ -35,21 +46,30 @@ export default function Board() {
+ 
+   const handleSwipe = useCallback(
+     ({ deltaX, deltaY }: SwipeInput) => {
++      if (isPreviewing || isTimelineLocked) {
++        return;
++      }
++
+       if (Math.abs(deltaX) > Math.abs(deltaY)) {
+         if (deltaX > 0) {
+           moveTiles("move_right");
+         } else {
+           moveTiles("move_left");
+         }
++      } else if (deltaY > 0) {
++        moveTiles("move_down");
+       } else {
+-        if (deltaY > 0) {
+-          moveTiles("move_down");
+-        } else {
+-          moveTiles("move_up");
+-        }
++        moveTiles("move_up");
+       }
+     },
+-    [moveTiles],
++    [isPreviewing, isTimelineLocked, moveTiles],
++  );
++
++  const handleTimelineChange = useCallback(
++    (e: ChangeEvent<HTMLInputElement>) => {
++      previewTimelineStep(Number(e.target.value));
++    },
++    [previewTimelineStep],
+   );
+ 
+   const renderGrid = () => {
+@@ -65,7 +85,7 @@ export default function Board() {
+ 
+   const renderTiles = () => {
+     return getTiles().map((tile: TileModel) => (
+-      <Tile key={`${tile.id}`} {...tile} />
++      <Tile key={`${tile.id}`} animationsEnabled={!isPreviewing} {...tile} />
+     ));
+   };
+ 
+@@ -86,11 +106,37 @@ export default function Board() {
+ 
+   return (
+     <MobileSwiper onSwipe={handleSwipe}>
+-      <div className={styles.board}>
+-        {status === "won" && <Splash heading="You won!" type="won" />}
+-        {status === "lost" && <Splash heading="You lost!" />}
+-        <div className={styles.tiles}>{renderTiles()}</div>
+-        <div className={styles.grid}>{renderGrid()}</div>
++      <div className={styles.wrapper}>
++        <div className={styles.board}>
++          {status === "won" && <Splash heading="You won!" type="won" />}
++          {status === "lost" && <Splash heading="You lost!" />}
++          <div className={styles.tiles}>{renderTiles()}</div>
++          <div className={styles.grid}>{renderGrid()}</div>
++        </div>
++        <div className={styles.timeline}>
++          <div className={styles.timelineHeader}>
++            <span>Timeline</span>
++            <span>
++              {activeStep + 1}/{totalSteps}
++              {isPreviewing && activeStep !== currentStep ? " Previewing" : ""}
++            </span>
++          </div>
++          <input
++            aria-label="Timeline"
++            className={styles.timelineSlider}
++            disabled={isTimelineLocked}
++            max={Math.max(totalSteps - 1, 0)}
++            min={0}
++            onBlur={commitTimelinePreview}
++            onChange={handleTimelineChange}
++            onKeyUp={commitTimelinePreview}
++            onMouseUp={commitTimelinePreview}
++            onTouchEnd={commitTimelinePreview}
++            step={1}
++            type="range"
++            value={activeStep}
++          />
++        </div>
+       </div>
+     </MobileSwiper>
+   );
+diff --git a/components/tile.tsx b/components/tile.tsx
+index 39964d5..198c035 100644
+--- a/components/tile.tsx
++++ b/components/tile.tsx
+@@ -10,7 +10,15 @@ import { Tile as TileProps } from "@/models/tile";
+ import styles from "@/styles/tile.module.css";
+ import usePreviousProps from "@/hooks/use-previous-props";
+ 
+-export default function Tile({ position, value }: TileProps) {
++type Props = TileProps & {
++  animationsEnabled?: boolean;
++};
++
++export default function Tile({
++  animationsEnabled = true,
++  position,
++  value,
++}: Props) {
+   const isWideScreen = useMediaQuery({ minWidth: 512 });
+   const containerWidth = isWideScreen
+     ? containerWidthDesktop
+@@ -20,25 +28,39 @@ export default function Tile({ position, value }: TileProps) {
+   const previousValue = usePreviousProps<number>(value);
+   const hasChanged = previousValue !== value;
+ 
+-  const positionToPixels = (position: number) =>
+-    (position / tileCountPerDimension) * containerWidth;
++  const positionToPixels = (positionValue: number) =>
++    (positionValue / tileCountPerDimension) * containerWidth;
+ 
+   useEffect(() => {
++    if (!animationsEnabled) {
++      setScale(1);
++      return;
++    }
++
+     if (hasChanged) {
+       setScale(1.1);
+-      setTimeout(() => setScale(1), mergeAnimationDuration);
++      const timeoutId = window.setTimeout(() => setScale(1), mergeAnimationDuration);
++
++      return () => {
++        window.clearTimeout(timeoutId);
++      };
+     }
+-  }, [hasChanged]);
++  }, [animationsEnabled, hasChanged]);
+ 
+   const style = {
+     left: positionToPixels(position[0]),
+     top: positionToPixels(position[1]),
+-    transform: `scale(${scale})`,
++    transform: `scale(${animationsEnabled ? scale : 1})`,
+     zIndex: value,
+   };
+ 
+   return (
+-    <div className={`${styles.tile} ${styles[`tile${value}`]}`} style={style}>
++    <div
++      className={`${styles.tile} ${styles[`tile${value}`]} ${
++        !animationsEnabled ? styles.staticTile : ""
++      }`}
++      style={style}
++    >
+       {value}
+     </div>
+   );
+diff --git a/context/game-context.tsx b/context/game-context.tsx
+index 0b93edc..6c258b9 100644
+--- a/context/game-context.tsx
++++ b/context/game-context.tsx
+@@ -3,7 +3,9 @@ import {
+   createContext,
+   useCallback,
+   useEffect,
++  useMemo,
+   useReducer,
++  useState,
+ } from "react";
+ import { isNil, throttle } from "lodash";
+ import {
+@@ -12,22 +14,60 @@ import {
+   tileCountPerDimension,
+ } from "@/constants";
+ import { Tile } from "@/models/tile";
+-import gameReducer, { initialState } from "@/reducers/game-reducer";
+-
+-type MoveDirection = "move_up" | "move_down" | "move_left" | "move_right";
+-
+-export const GameContext = createContext({
++import gameReducer, {
++  GameSnapshot,
++  GameStatus,
++  initialState,
++} from "@/reducers/game-reducer";
++
++export type MoveDirection =
++  | "move_up"
++  | "move_down"
++  | "move_left"
++  | "move_right";
++
++type GameContextValue = {
++  score: number;
++  status: GameStatus;
++  moveTiles: (direction: MoveDirection) => void;
++  getTiles: () => Tile[];
++  startGame: () => void;
++  currentStep: number;
++  activeStep: number;
++  totalSteps: number;
++  isPreviewing: boolean;
++  isTimelineLocked: boolean;
++  previewTimelineStep: (step: number) => void;
++  commitTimelinePreview: () => void;
++};
++
++export const GameContext = createContext<GameContextValue>({
+   score: 0,
+   status: "ongoing",
+-  moveTiles: (_: MoveDirection) => {},
+-  getTiles: () => [] as Tile[],
++  moveTiles: () => {},
++  getTiles: () => [],
+   startGame: () => {},
++  currentStep: 0,
++  activeStep: 0,
++  totalSteps: 1,
++  isPreviewing: false,
++  isTimelineLocked: false,
++  previewTimelineStep: () => {},
++  commitTimelinePreview: () => {},
+ });
+ 
+ export default function GameProvider({ children }: PropsWithChildren) {
+   const [gameState, dispatch] = useReducer(gameReducer, initialState);
++  const [previewStep, setPreviewStep] = useState<number | null>(null);
++  const [isPreviewing, setIsPreviewing] = useState(false);
++
++  const activeStep =
++    isPreviewing && !isNil(previewStep) ? previewStep : gameState.historyIndex;
++  const previewSnapshot = gameState.history[activeStep];
++  const displayedState: GameSnapshot =
++    isPreviewing && !isNil(previewSnapshot) ? previewSnapshot : gameState;
+ 
+-  const getEmptyCells = () => {
++  const getEmptyCells = useCallback(() => {
+     const results: [number, number][] = [];
+ 
+     for (let x = 0; x < tileCountPerDimension; x++) {
+@@ -37,44 +77,83 @@ export default function GameProvider({ children }: PropsWithChildren) {
+         }
+       }
+     }
++
+     return results;
+-  };
++  }, [gameState.board]);
+ 
+-  const appendRandomTile = () => {
++  const appendRandomTile = useCallback(() => {
+     const emptyCells = getEmptyCells();
++
+     if (emptyCells.length > 0) {
+       const cellIndex = Math.floor(Math.random() * emptyCells.length);
+-      const newTile = {
+-        position: emptyCells[cellIndex],
+-        value: 2,
+-      };
+-      dispatch({ type: "create_tile", tile: newTile });
++      dispatch({
++        type: "create_tile",
++        tile: {
++          position: emptyCells[cellIndex],
++          value: 2,
++        },
++      });
+     }
+-  };
+-
+-  const getTiles = () => {
+-    return gameState.tilesByIds.map((tileId) => gameState.tiles[tileId]);
+-  };
+-
+-  const moveTiles = useCallback(
+-    throttle(
+-      (type: MoveDirection) => dispatch({ type }),
+-      mergeAnimationDuration * 1.05,
+-      { trailing: false },
+-    ),
+-    [dispatch],
++  }, [getEmptyCells]);
++
++  const getTiles = useCallback(() => {
++    return displayedState.tilesByIds.map((tileId) => displayedState.tiles[tileId]);
++  }, [displayedState]);
++
++  const moveTiles = useMemo(
++    () =>
++      throttle(
++        (type: MoveDirection) => {
++          if (isPreviewing) {
++            return;
++          }
++
++          dispatch({ type });
++        },
++        mergeAnimationDuration * 1.05,
++        { trailing: false },
++      ),
++    [isPreviewing],
+   );
+ 
+-  const startGame = () => {
+-    dispatch({ type: "reset_game" });
+-    dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
+-    dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
+-  };
++  const startGame = useCallback(() => {
++    setPreviewStep(null);
++    setIsPreviewing(false);
++    dispatch({
++      type: "start_game",
++      tiles: [
++        { position: [0, 1], value: 2 },
++        { position: [0, 2], value: 2 },
++      ],
++    });
++  }, []);
++
++  const previewTimelineStep = useCallback(
++    (step: number) => {
++      if (gameState.hasChanged) {
++        return;
++      }
++
++      setPreviewStep(step);
++      setIsPreviewing(true);
++    },
++    [gameState.hasChanged],
++  );
++
++  const commitTimelinePreview = useCallback(() => {
++    if (isNil(previewStep)) {
++      setIsPreviewing(false);
++      return;
++    }
+ 
+-  const checkGameState = () => {
+-    const isWon =
+-      Object.values(gameState.tiles).filter((t) => t.value === gameWinTileValue)
+-        .length > 0;
++    dispatch({ type: "jump_to_history", index: previewStep });
++    setIsPreviewing(false);
++    setPreviewStep(null);
++  }, [previewStep]);
++
++  const checkGameState = useCallback(() => {
++    const tilesList = Object.values(gameState.tiles) as Tile[];
++    const isWon = tilesList.filter((tile) => tile.value === gameWinTileValue).length > 0;
+ 
+     if (isWon) {
+       dispatch({ type: "update_status", status: "won" });
+@@ -82,54 +161,77 @@ export default function GameProvider({ children }: PropsWithChildren) {
+     }
+ 
+     const { tiles, board } = gameState;
+-
+     const maxIndex = tileCountPerDimension - 1;
++
+     for (let x = 0; x < maxIndex; x += 1) {
+       for (let y = 0; y < maxIndex; y += 1) {
+         if (
+-          isNil(gameState.board[x][y]) ||
+-          isNil(gameState.board[x + 1][y]) ||
+-          isNil(gameState.board[x][y + 1])
++          isNil(board[x][y]) ||
++          isNil(board[x + 1][y]) ||
++          isNil(board[x][y + 1])
+         ) {
+           return;
+         }
+ 
+-        if (tiles[board[x][y]].value === tiles[board[x + 1][y]].value) {
++        if (
++          tiles[board[x][y] as string].value ===
++          tiles[board[x + 1][y] as string].value
++        ) {
+           return;
+         }
+ 
+-        if (tiles[board[x][y]].value === tiles[board[x][y + 1]].value) {
++        if (
++          tiles[board[x][y] as string].value ===
++          tiles[board[x][y + 1] as string].value
++        ) {
+           return;
+         }
+       }
+     }
+ 
+     dispatch({ type: "update_status", status: "lost" });
+-  };
++  }, [gameState]);
+ 
+   useEffect(() => {
+     if (gameState.hasChanged) {
+-      setTimeout(() => {
++      const timeoutId = window.setTimeout(() => {
+         dispatch({ type: "clean_up" });
+         appendRandomTile();
+       }, mergeAnimationDuration);
++
++      return () => {
++        window.clearTimeout(timeoutId);
++      };
+     }
+-  }, [gameState.hasChanged]);
++  }, [appendRandomTile, gameState.hasChanged]);
+ 
+   useEffect(() => {
+     if (!gameState.hasChanged) {
+       checkGameState();
+     }
+-  }, [gameState.hasChanged]);
++  }, [checkGameState, gameState.hasChanged]);
++
++  useEffect(() => {
++    return () => {
++      moveTiles.cancel();
++    };
++  }, [moveTiles]);
+ 
+   return (
+     <GameContext.Provider
+       value={{
+-        score: gameState.score,
+-        status: gameState.status,
++        score: displayedState.score,
++        status: displayedState.status,
+         getTiles,
+         moveTiles,
+         startGame,
++        currentStep: gameState.historyIndex,
++        activeStep,
++        totalSteps: gameState.history.length,
++        isPreviewing,
++        isTimelineLocked: gameState.hasChanged,
++        previewTimelineStep,
++        commitTimelinePreview,
+       }}
+     >
+       {children}
+diff --git a/reducers/game-reducer.ts b/reducers/game-reducer.ts
+index 47d6226..228b565 100644
+--- a/reducers/game-reducer.ts
++++ b/reducers/game-reducer.ts
+@@ -1,30 +1,44 @@
+-import { flattenDeep, isEqual, isNil } from "lodash";
++import { flattenDeep, isEqual } from "lodash";
+ import { uid } from "uid";
+ import { tileCountPerDimension } from "@/constants";
+ import { Tile, TileMap } from "@/models/tile";
+ 
+-type GameStatus = "ongoing" | "won" | "lost";
++type BoardCell = string | undefined;
++type Board = BoardCell[][];
++type ExistingTile = Tile & { id: string };
+ 
+-type State = {
+-  board: string[][];
++export type GameStatus = "ongoing" | "won" | "lost";
++
++export type GameSnapshot = {
++  board: Board;
+   tiles: TileMap;
+   tilesByIds: string[];
+-  hasChanged: boolean;
+   score: number;
+   status: GameStatus;
+ };
+-type Action =
+-  | { type: "create_tile"; tile: Tile }
++
++export type State = GameSnapshot & {
++  hasChanged: boolean;
++  history: GameSnapshot[];
++  historyIndex: number;
++};
++
++export type Action =
+   | { type: "clean_up" }
++  | { type: "create_tile"; tile: Omit<Tile, "id"> }
++  | { type: "jump_to_history"; index: number }
+   | { type: "move_up" }
+   | { type: "move_down" }
+   | { type: "move_left" }
+   | { type: "move_right" }
+   | { type: "reset_game" }
++  | { type: "start_game"; tiles: Omit<Tile, "id">[] }
+   | { type: "update_status"; status: GameStatus };
+ 
++const historyLimit = 50;
++
+ function createBoard() {
+-  const board: string[][] = [];
++  const board: Board = [];
+ 
+   for (let i = 0; i < tileCountPerDimension; i += 1) {
+     board[i] = new Array(tileCountPerDimension).fill(undefined);
+@@ -33,14 +47,113 @@ function createBoard() {
+   return board;
+ }
+ 
+-export const initialState: State = {
+-  board: createBoard(),
+-  tiles: {},
+-  tilesByIds: [],
+-  hasChanged: false,
+-  score: 0,
+-  status: "ongoing",
+-};
++function cloneBoard(board: Board) {
++  return board.map((row) => [...row]);
++}
++
++function cloneTiles(tiles: TileMap) {
++  return Object.entries(tiles).reduce<TileMap>((result, [tileId, tile]) => {
++    result[tileId] = {
++      ...tile,
++      position: [...tile.position] as [number, number],
++    };
++
++    return result;
++  }, {});
++}
++
++function createSnapshot(snapshot: GameSnapshot): GameSnapshot {
++  return {
++    board: cloneBoard(snapshot.board),
++    tiles: cloneTiles(snapshot.tiles),
++    tilesByIds: [...snapshot.tilesByIds],
++    score: snapshot.score,
++    status: snapshot.status,
++  };
++}
++
++function getEmptySnapshot(): GameSnapshot {
++  return {
++    board: createBoard(),
++    tiles: {},
++    tilesByIds: [],
++    score: 0,
++    status: "ongoing",
++  };
++}
++
++function snapshotFromState(state: GameSnapshot): GameSnapshot {
++  return createSnapshot({
++    board: state.board,
++    tiles: state.tiles,
++    tilesByIds: state.tilesByIds,
++    score: state.score,
++    status: state.status,
++  });
++}
++
++function pushHistory(state: State, snapshot: GameSnapshot): State {
++  const nextSnapshot = createSnapshot(snapshot);
++  const history = [...state.history.slice(0, state.historyIndex + 1), nextSnapshot].slice(
++    -historyLimit,
++  );
++
++  return {
++    ...state,
++    ...nextSnapshot,
++    hasChanged: false,
++    history,
++    historyIndex: history.length - 1,
++  };
++}
++
++function replaceCurrentHistoryEntry(state: State, snapshot: GameSnapshot): State {
++  const nextSnapshot = createSnapshot(snapshot);
++  const history = state.history.map((historySnapshot, index) =>
++    index === state.historyIndex ? nextSnapshot : historySnapshot,
++  );
++
++  return {
++    ...state,
++    ...nextSnapshot,
++    hasChanged: false,
++    history,
++    historyIndex: state.historyIndex,
++  };
++}
++
++function placeTile(snapshot: GameSnapshot, tile: Omit<Tile, "id">): GameSnapshot {
++  const tileId = uid();
++  const [x, y] = tile.position;
++  const nextBoard = cloneBoard(snapshot.board);
++  nextBoard[y][x] = tileId;
++
++  return {
++    ...snapshot,
++    board: nextBoard,
++    tiles: {
++      ...snapshot.tiles,
++      [tileId]: {
++        id: tileId,
++        ...tile,
++      },
++    },
++    tilesByIds: [...snapshot.tilesByIds, tileId],
++  };
++}
++
++export function getInitialState(): State {
++  const snapshot = getEmptySnapshot();
++
++  return {
++    ...snapshot,
++    hasChanged: false,
++    history: [createSnapshot(snapshot)],
++    historyIndex: 0,
++  };
++}
++
++export const initialState: State = getInitialState();
+ 
+ export default function gameReducer(
+   state: State = initialState,
+@@ -48,10 +161,10 @@ export default function gameReducer(
+ ) {
+   switch (action.type) {
+     case "clean_up": {
+-      const flattenBoard = flattenDeep(state.board);
+-      const newTiles: TileMap = flattenBoard.reduce(
+-        (result, tileId: string) => {
+-          if (isNil(tileId)) {
++      const flattenBoard = flattenDeep(state.board) as BoardCell[];
++      const newTiles = flattenBoard.reduce<TileMap>(
++        (result: TileMap, tileId: BoardCell) => {
++          if (typeof tileId === "undefined") {
+             return result;
+           }
+ 
+@@ -71,22 +184,22 @@ export default function gameReducer(
+       };
+     }
+     case "create_tile": {
+-      const tileId = uid();
+-      const [x, y] = action.tile.position;
+-      const newBoard = JSON.parse(JSON.stringify(state.board));
+-      newBoard[y][x] = tileId;
++      const nextSnapshot = placeTile(snapshotFromState(state), action.tile);
++
++      return pushHistory(state, nextSnapshot);
++    }
++    case "jump_to_history": {
++      const snapshot = state.history[action.index];
++
++      if (typeof snapshot === "undefined") {
++        return state;
++      }
+ 
+       return {
+         ...state,
+-        board: newBoard,
+-        tiles: {
+-          ...state.tiles,
+-          [tileId]: {
+-            id: tileId,
+-            ...action.tile,
+-          },
+-        },
+-        tilesByIds: [...state.tilesByIds, tileId],
++        ...createSnapshot(snapshot),
++        hasChanged: false,
++        historyIndex: action.index,
+       };
+     }
+     case "move_up": {
+@@ -97,39 +210,42 @@ export default function gameReducer(
+ 
+       for (let x = 0; x < tileCountPerDimension; x++) {
+         let newY = 0;
+-        let previousTile: Tile | undefined;
++        let previousTile: ExistingTile | undefined;
+ 
+         for (let y = 0; y < tileCountPerDimension; y++) {
+           const tileId = state.board[y][x];
+-          const currentTile = state.tiles[tileId];
+-
+-          if (!isNil(tileId)) {
+-            if (previousTile?.value === currentTile.value) {
+-              score += previousTile.value * 2;
+-              newTiles[previousTile.id as string] = {
+-                ...previousTile,
+-                value: previousTile.value * 2,
+-              };
+-              newTiles[tileId] = {
+-                ...currentTile,
+-                position: [x, newY - 1],
+-              };
+-              previousTile = undefined;
+-              hasChanged = true;
+-              continue;
+-            }
+-
+-            newBoard[newY][x] = tileId;
++
++          if (typeof tileId === "undefined") {
++            continue;
++          }
++
++          const currentTile = state.tiles[tileId] as ExistingTile;
++
++          if (previousTile && previousTile.value === currentTile.value) {
++            score += previousTile.value * 2;
++            newTiles[previousTile.id] = {
++              ...previousTile,
++              value: previousTile.value * 2,
++            };
+             newTiles[tileId] = {
+               ...currentTile,
+-              position: [x, newY],
++              position: [x, newY - 1],
+             };
+-            previousTile = newTiles[tileId];
+-            if (!isEqual(currentTile.position, [x, newY])) {
+-              hasChanged = true;
+-            }
+-            newY++;
++            previousTile = undefined;
++            hasChanged = true;
++            continue;
++          }
++
++          newBoard[newY][x] = tileId;
++          newTiles[tileId] = {
++            ...currentTile,
++            position: [x, newY],
++          };
++          previousTile = newTiles[tileId] as ExistingTile;
++          if (!isEqual(currentTile.position, [x, newY])) {
++            hasChanged = true;
+           }
++          newY++;
+         }
+       }
+       return {
+@@ -148,39 +264,42 @@ export default function gameReducer(
+ 
+       for (let x = 0; x < tileCountPerDimension; x++) {
+         let newY = tileCountPerDimension - 1;
+-        let previousTile: Tile | undefined;
++        let previousTile: ExistingTile | undefined;
+ 
+         for (let y = tileCountPerDimension - 1; y >= 0; y--) {
+           const tileId = state.board[y][x];
+-          const currentTile = state.tiles[tileId];
+-
+-          if (!isNil(tileId)) {
+-            if (previousTile?.value === currentTile.value) {
+-              score += previousTile.value * 2;
+-              newTiles[previousTile.id as string] = {
+-                ...previousTile,
+-                value: previousTile.value * 2,
+-              };
+-              newTiles[tileId] = {
+-                ...currentTile,
+-                position: [x, newY + 1],
+-              };
+-              previousTile = undefined;
+-              hasChanged = true;
+-              continue;
+-            }
+-
+-            newBoard[newY][x] = tileId;
++
++          if (typeof tileId === "undefined") {
++            continue;
++          }
++
++          const currentTile = state.tiles[tileId] as ExistingTile;
++
++          if (previousTile && previousTile.value === currentTile.value) {
++            score += previousTile.value * 2;
++            newTiles[previousTile.id] = {
++              ...previousTile,
++              value: previousTile.value * 2,
++            };
+             newTiles[tileId] = {
+               ...currentTile,
+-              position: [x, newY],
++              position: [x, newY + 1],
+             };
+-            previousTile = newTiles[tileId];
+-            if (!isEqual(currentTile.position, [x, newY])) {
+-              hasChanged = true;
+-            }
+-            newY--;
++            previousTile = undefined;
++            hasChanged = true;
++            continue;
+           }
++
++          newBoard[newY][x] = tileId;
++          newTiles[tileId] = {
++            ...currentTile,
++            position: [x, newY],
++          };
++          previousTile = newTiles[tileId] as ExistingTile;
++          if (!isEqual(currentTile.position, [x, newY])) {
++            hasChanged = true;
++          }
++          newY--;
+         }
+       }
+       return {
+@@ -199,39 +318,42 @@ export default function gameReducer(
+ 
+       for (let y = 0; y < tileCountPerDimension; y++) {
+         let newX = 0;
+-        let previousTile: Tile | undefined;
++        let previousTile: ExistingTile | undefined;
+ 
+         for (let x = 0; x < tileCountPerDimension; x++) {
+           const tileId = state.board[y][x];
+-          const currentTile = state.tiles[tileId];
+-
+-          if (!isNil(tileId)) {
+-            if (previousTile?.value === currentTile.value) {
+-              score += previousTile.value * 2;
+-              newTiles[previousTile.id as string] = {
+-                ...previousTile,
+-                value: previousTile.value * 2,
+-              };
+-              newTiles[tileId] = {
+-                ...currentTile,
+-                position: [newX - 1, y],
+-              };
+-              previousTile = undefined;
+-              hasChanged = true;
+-              continue;
+-            }
+-
+-            newBoard[y][newX] = tileId;
++
++          if (typeof tileId === "undefined") {
++            continue;
++          }
++
++          const currentTile = state.tiles[tileId] as ExistingTile;
++
++          if (previousTile && previousTile.value === currentTile.value) {
++            score += previousTile.value * 2;
++            newTiles[previousTile.id] = {
++              ...previousTile,
++              value: previousTile.value * 2,
++            };
+             newTiles[tileId] = {
+               ...currentTile,
+-              position: [newX, y],
++              position: [newX - 1, y],
+             };
+-            previousTile = newTiles[tileId];
+-            if (!isEqual(currentTile.position, [newX, y])) {
+-              hasChanged = true;
+-            }
+-            newX++;
++            previousTile = undefined;
++            hasChanged = true;
++            continue;
++          }
++
++          newBoard[y][newX] = tileId;
++          newTiles[tileId] = {
++            ...currentTile,
++            position: [newX, y],
++          };
++          previousTile = newTiles[tileId] as ExistingTile;
++          if (!isEqual(currentTile.position, [newX, y])) {
++            hasChanged = true;
+           }
++          newX++;
+         }
+       }
+       return {
+@@ -250,39 +372,42 @@ export default function gameReducer(
+ 
+       for (let y = 0; y < tileCountPerDimension; y++) {
+         let newX = tileCountPerDimension - 1;
+-        let previousTile: Tile | undefined;
++        let previousTile: ExistingTile | undefined;
+ 
+         for (let x = tileCountPerDimension - 1; x >= 0; x--) {
+           const tileId = state.board[y][x];
+-          const currentTile = state.tiles[tileId];
+-
+-          if (!isNil(tileId)) {
+-            if (previousTile?.value === currentTile.value) {
+-              score += previousTile.value * 2;
+-              newTiles[previousTile.id as string] = {
+-                ...previousTile,
+-                value: previousTile.value * 2,
+-              };
+-              newTiles[tileId] = {
+-                ...currentTile,
+-                position: [newX + 1, y],
+-              };
+-              previousTile = undefined;
+-              hasChanged = true;
+-              continue;
+-            }
+-
+-            newBoard[y][newX] = tileId;
++
++          if (typeof tileId === "undefined") {
++            continue;
++          }
++
++          const currentTile = state.tiles[tileId] as ExistingTile;
++
++          if (previousTile && previousTile.value === currentTile.value) {
++            score += previousTile.value * 2;
++            newTiles[previousTile.id] = {
++              ...previousTile,
++              value: previousTile.value * 2,
++            };
+             newTiles[tileId] = {
+-              ...state.tiles[tileId],
+-              position: [newX, y],
++              ...currentTile,
++              position: [newX + 1, y],
+             };
+-            previousTile = newTiles[tileId];
+-            if (!isEqual(currentTile.position, [newX, y])) {
+-              hasChanged = true;
+-            }
+-            newX--;
++            previousTile = undefined;
++            hasChanged = true;
++            continue;
++          }
++
++          newBoard[y][newX] = tileId;
++          newTiles[tileId] = {
++            ...currentTile,
++            position: [newX, y],
++          };
++          previousTile = newTiles[tileId] as ExistingTile;
++          if (!isEqual(currentTile.position, [newX, y])) {
++            hasChanged = true;
+           }
++          newX--;
+         }
+       }
+       return {
+@@ -294,12 +419,33 @@ export default function gameReducer(
+       };
+     }
+     case "reset_game":
+-      return initialState;
+-    case "update_status":
++      return getInitialState();
++    case "start_game": {
++      const emptyState = getInitialState();
++      const startedSnapshot = action.tiles.reduce(
++        (snapshot, tile) => placeTile(snapshot, tile),
++        snapshotFromState(emptyState),
++      );
++
+       return {
+-        ...state,
+-        status: action.status,
++        ...emptyState,
++        ...startedSnapshot,
++        history: [snapshotFromState(emptyState), createSnapshot(startedSnapshot)].slice(
++          -historyLimit,
++        ),
++        historyIndex: 1,
+       };
++    }
++    case "update_status": {
++      if (state.status === action.status) {
++        return state;
++      }
++
++      return replaceCurrentHistoryEntry(state, {
++        ...snapshotFromState(state),
++        status: action.status,
++      });
++    }
+     default:
+       return state;
+   }
+diff --git a/styles/board.module.css b/styles/board.module.css
+index f2088b2..0beef0a 100644
+--- a/styles/board.module.css
++++ b/styles/board.module.css
+@@ -1,3 +1,9 @@
++.wrapper {
++  display: flex;
++  flex-direction: column;
++  gap: calc(var(--pixel-size) * 1.5);
++}
++
+ .board {
+   position: relative;
+   width: calc(var(--pixel-size) * 8 * 4 + var(--pixel-size) * 5);
+@@ -29,6 +35,35 @@
+   bottom: 0;
+ }
+ 
++.timeline {
++  display: flex;
++  flex-direction: column;
++  gap: calc(var(--pixel-size) * 0.75);
++  padding: calc(var(--pixel-size) * 1);
++  border-radius: calc(var(--pixel-size) * 0.75);
++  background: var(--secondary-background);
++}
++
++.timelineHeader {
++  display: flex;
++  justify-content: space-between;
++  align-items: center;
++  gap: calc(var(--pixel-size) * 1);
++  color: var(--secondary-text-color);
++  font-size: calc(var(--pixel-size) * 1.5);
++  font-weight: 700;
++}
++
++.timelineSlider {
++  width: 100%;
++  margin: 0;
++  accent-color: var(--tile-background);
++}
++
++.timelineSlider:disabled {
++  opacity: 0.5;
++}
++
+ @media (min-width: 512px) {
+   .board {
+     width: calc(var(--pixel-size) * 12.5 * 4 + var(--pixel-size) * 10);
+@@ -47,4 +82,12 @@
+   .tiles {
+     margin: calc(var(--pixel-size) * 1);
+   }
++
++  .timeline {
++    padding: calc(var(--pixel-size) * 1.5);
++  }
++
++  .timelineHeader {
++    font-size: calc(var(--pixel-size) * 2);
++  }
+ }
+diff --git a/styles/tile.module.css b/styles/tile.module.css
+index d710fbb..62e27fd 100644
+--- a/styles/tile.module.css
++++ b/styles/tile.module.css
+@@ -14,6 +14,10 @@
+   transition-duration: 200ms, 200ms, 100ms;
+ }
+ 
++.staticTile {
++  transition: none;
++}
++
+ @media (min-width: 512px) {
+   .tile {
+     width: calc(var(--pixel-size) * 12.5);
+@@ -24,7 +28,6 @@
+   }
+ }
+ 
+-/* -=-=-=- START OF TEXT COLOR -=-=-=- */
+ .tile8,
+ .tile16,
+ .tile32,
+@@ -38,9 +41,7 @@
+ .tile8192 {
+   color: var(--secondary-text-color);
+ }
+-/* -=-=-=-= END OF TEXT COLOR =-=-=-=- */
+ 
+-/* -=-=-=- START OF TEXT SIZE -=-=-=- */
+ .tile128,
+ .tile256,
+ .tile512 {
+@@ -68,7 +69,6 @@
+     font-size: calc(var(--pixel-size) * 4);
+   }
+ }
+-/* -=-=-=-= END OF TEXT SIZE =-=-=-=- */
+ 
+ .tile2 {
+   box-shadow:

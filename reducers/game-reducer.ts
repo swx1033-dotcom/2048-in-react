@@ -1,9 +1,18 @@
-import { flattenDeep, isEqual, isNil } from "lodash";
+import { cloneDeep, flattenDeep, isEqual, isNil } from "lodash";
 import { uid } from "uid";
 import { tileCountPerDimension } from "@/constants";
 import { Tile, TileMap } from "@/models/tile";
 
 type GameStatus = "ongoing" | "won" | "lost";
+
+type HistoryEntry = {
+  board: string[][];
+  tiles: TileMap;
+  tilesByIds: string[];
+  hasChanged: boolean;
+  score: number;
+  status: GameStatus;
+};
 
 type State = {
   board: string[][];
@@ -12,6 +21,7 @@ type State = {
   hasChanged: boolean;
   score: number;
   status: GameStatus;
+  history: HistoryEntry[];
 };
 type Action =
   | { type: "create_tile"; tile: Tile }
@@ -21,7 +31,8 @@ type Action =
   | { type: "move_left" }
   | { type: "move_right" }
   | { type: "reset_game" }
-  | { type: "update_status"; status: GameStatus };
+  | { type: "update_status"; status: GameStatus }
+  | { type: "undo" };
 
 function createBoard() {
   const board: string[][] = [];
@@ -33,6 +44,17 @@ function createBoard() {
   return board;
 }
 
+function saveHistoryEntry(state: State): HistoryEntry {
+  return {
+    board: cloneDeep(state.board),
+    tiles: cloneDeep(state.tiles),
+    tilesByIds: [...state.tilesByIds],
+    hasChanged: state.hasChanged,
+    score: state.score,
+    status: state.status,
+  };
+}
+
 export const initialState: State = {
   board: createBoard(),
   tiles: {},
@@ -40,6 +62,7 @@ export const initialState: State = {
   hasChanged: false,
   score: 0,
   status: "ongoing",
+  history: [],
 };
 
 export default function gameReducer(
@@ -138,6 +161,7 @@ export default function gameReducer(
         tiles: newTiles,
         hasChanged,
         score,
+        history: hasChanged ? [...state.history, saveHistoryEntry(state)] : state.history,
       };
     }
     case "move_down": {
@@ -189,6 +213,7 @@ export default function gameReducer(
         tiles: newTiles,
         hasChanged,
         score,
+        history: hasChanged ? [...state.history, saveHistoryEntry(state)] : state.history,
       };
     }
     case "move_left": {
@@ -240,6 +265,7 @@ export default function gameReducer(
         tiles: newTiles,
         hasChanged,
         score,
+        history: hasChanged ? [...state.history, saveHistoryEntry(state)] : state.history,
       };
     }
     case "move_right": {
@@ -291,6 +317,7 @@ export default function gameReducer(
         tiles: newTiles,
         hasChanged,
         score,
+        history: hasChanged ? [...state.history, saveHistoryEntry(state)] : state.history,
       };
     }
     case "reset_game":
@@ -300,6 +327,17 @@ export default function gameReducer(
         ...state,
         status: action.status,
       };
+    case "undo": {
+      if (state.history.length === 0) {
+        return state;
+      }
+      const previousEntry = state.history[state.history.length - 1];
+      return {
+        ...previousEntry,
+        history: state.history.slice(0, -1),
+        hasChanged: false,
+      };
+    }
     default:
       return state;
   }

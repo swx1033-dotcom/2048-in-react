@@ -22,6 +22,7 @@ export const GameContext = createContext({
   moveTiles: (_: MoveDirection) => {},
   getTiles: () => [] as Tile[],
   startGame: () => {},
+  undo: () => {},
 });
 
 export default function GameProvider({ children }: PropsWithChildren) {
@@ -64,6 +65,10 @@ export default function GameProvider({ children }: PropsWithChildren) {
     ),
     [dispatch],
   );
+
+  const undo = useCallback(() => {
+    dispatch({ type: "undo" });
+  }, [dispatch]);
 
   const startGame = () => {
     dispatch({ type: "reset_game" });
@@ -130,6 +135,7 @@ export default function GameProvider({ children }: PropsWithChildren) {
         getTiles,
         moveTiles,
         startGame,
+        undo,
       }}
     >
       {children}

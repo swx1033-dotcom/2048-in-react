@@ -1,0 +1,250 @@
+diff --git a/components/board.tsx b/components/board.tsx
+index 57e2531..5560e67 100644
+--- a/components/board.tsx
++++ b/components/board.tsx
+@@ -7,14 +7,18 @@ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
+ import Splash from "./splash";
+ 
+ export default function Board() {
+-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
++  const { getTiles, moveTiles, startGame, undo, status } = useContext(GameContext);
+   const initialized = useRef(false);
+ 
+   const handleKeyDown = useCallback(
+     (e: KeyboardEvent) => {
+-      // disables page scrolling with keyboard arrows
+       e.preventDefault();
+ 
++      if (e.ctrlKey && e.code === "KeyZ") {
++        undo();
++        return;
++      }
++
+       switch (e.code) {
+         case "ArrowUp":
+           moveTiles("move_up");
+@@ -30,7 +34,7 @@ export default function Board() {
+           break;
+       }
+     },
+-    [moveTiles],
++    [moveTiles, undo],
+   );
+ 
+   const handleSwipe = useCallback(
+diff --git a/context/game-context.tsx b/context/game-context.tsx
+index 0b93edc..520b45e 100644
+--- a/context/game-context.tsx
++++ b/context/game-context.tsx
+@@ -22,6 +22,7 @@ export const GameContext = createContext({
+   moveTiles: (_: MoveDirection) => {},
+   getTiles: () => [] as Tile[],
+   startGame: () => {},
++  undo: () => {},
+ });
+ 
+ export default function GameProvider({ children }: PropsWithChildren) {
+@@ -65,6 +66,10 @@ export default function GameProvider({ children }: PropsWithChildren) {
+     [dispatch],
+   );
+ 
++  const undo = useCallback(() => {
++    dispatch({ type: "undo" });
++  }, [dispatch]);
++
+   const startGame = () => {
+     dispatch({ type: "reset_game" });
+     dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
+@@ -130,6 +135,7 @@ export default function GameProvider({ children }: PropsWithChildren) {
+         getTiles,
+         moveTiles,
+         startGame,
++        undo,
+       }}
+     >
+       {children}
+diff --git a/pages/index.tsx b/pages/index.tsx
+index 75c6e8b..841f2bd 100644
+--- a/pages/index.tsx
++++ b/pages/index.tsx
+@@ -1,10 +1,14 @@
+ import Head from "next/head";
+ import Image from "next/image";
++import { useContext } from "react";
+ import Board from "@/components/board";
+ import Score from "@/components/score";
++import { GameContext } from "@/context/game-context";
+ import styles from "@/styles/index.module.css";
+ 
+ export default function Home() {
++  const { undo } = useContext(GameContext);
++
+   return (
+     <div className={styles.twenty48}>
+       <Head>
+@@ -25,6 +29,9 @@ export default function Home() {
+       </Head>
+       <header>
+         <h1>2048</h1>
++        <button onClick={undo} className={styles.undo}>
++          Undo
++        </button>
+         <Score />
+       </header>
+       <main>
+diff --git a/reducers/game-reducer.ts b/reducers/game-reducer.ts
+index 47d6226..559c9cc 100644
+--- a/reducers/game-reducer.ts
++++ b/reducers/game-reducer.ts
+@@ -1,10 +1,19 @@
+-import { flattenDeep, isEqual, isNil } from "lodash";
++import { cloneDeep, flattenDeep, isEqual, isNil } from "lodash";
+ import { uid } from "uid";
+ import { tileCountPerDimension } from "@/constants";
+ import { Tile, TileMap } from "@/models/tile";
+ 
+ type GameStatus = "ongoing" | "won" | "lost";
+ 
++type HistoryEntry = {
++  board: string[][];
++  tiles: TileMap;
++  tilesByIds: string[];
++  hasChanged: boolean;
++  score: number;
++  status: GameStatus;
++};
++
+ type State = {
+   board: string[][];
+   tiles: TileMap;
+@@ -12,6 +21,7 @@ type State = {
+   hasChanged: boolean;
+   score: number;
+   status: GameStatus;
++  history: HistoryEntry[];
+ };
+ type Action =
+   | { type: "create_tile"; tile: Tile }
+@@ -21,7 +31,8 @@ type Action =
+   | { type: "move_left" }
+   | { type: "move_right" }
+   | { type: "reset_game" }
+-  | { type: "update_status"; status: GameStatus };
++  | { type: "update_status"; status: GameStatus }
++  | { type: "undo" };
+ 
+ function createBoard() {
+   const board: string[][] = [];
+@@ -33,6 +44,17 @@ function createBoard() {
+   return board;
+ }
+ 
++function saveHistoryEntry(state: State): HistoryEntry {
++  return {
++    board: cloneDeep(state.board),
++    tiles: cloneDeep(state.tiles),
++    tilesByIds: [...state.tilesByIds],
++    hasChanged: state.hasChanged,
++    score: state.score,
++    status: state.status,
++  };
++}
++
+ export const initialState: State = {
+   board: createBoard(),
+   tiles: {},
+@@ -40,6 +62,7 @@ export const initialState: State = {
+   hasChanged: false,
+   score: 0,
+   status: "ongoing",
++  history: [],
+ };
+ 
+ export default function gameReducer(
+@@ -138,6 +161,7 @@ export default function gameReducer(
+         tiles: newTiles,
+         hasChanged,
+         score,
++        history: hasChanged ? [...state.history, saveHistoryEntry(state)] : state.history,
+       };
+     }
+     case "move_down": {
+@@ -189,6 +213,7 @@ export default function gameReducer(
+         tiles: newTiles,
+         hasChanged,
+         score,
++        history: hasChanged ? [...state.history, saveHistoryEntry(state)] : state.history,
+       };
+     }
+     case "move_left": {
+@@ -240,6 +265,7 @@ export default function gameReducer(
+         tiles: newTiles,
+         hasChanged,
+         score,
++        history: hasChanged ? [...state.history, saveHistoryEntry(state)] : state.history,
+       };
+     }
+     case "move_right": {
+@@ -291,6 +317,7 @@ export default function gameReducer(
+         tiles: newTiles,
+         hasChanged,
+         score,
++        history: hasChanged ? [...state.history, saveHistoryEntry(state)] : state.history,
+       };
+     }
+     case "reset_game":
+@@ -300,6 +327,17 @@ export default function gameReducer(
+         ...state,
+         status: action.status,
+       };
++    case "undo": {
++      if (state.history.length === 0) {
++        return state;
++      }
++      const previousEntry = state.history[state.history.length - 1];
++      return {
++        ...previousEntry,
++        history: state.history.slice(0, -1),
++        hasChanged: false,
++      };
++    }
+     default:
+       return state;
+   }
+diff --git a/styles/index.module.css b/styles/index.module.css
+index 69b8807..06ca153 100644
+--- a/styles/index.module.css
++++ b/styles/index.module.css
+@@ -21,6 +21,32 @@
+   flex: 1;
+ }
+ 
++.undo {
++  background: var(--secondary-background);
++  border: calc(var(--pixel-size) * 0.5) solid var(--secondary-background);
++  border-radius: calc(var(--pixel-size) * 0.75);
++  color: var(--tile-background);
++  font-size: calc(var(--pixel-size) * 1.5);
++  line-height: calc(var(--pixel-size) * 3);
++  font-weight: bold;
++  text-align: center;
++  text-transform: uppercase;
++  cursor: pointer;
++  padding: 0 calc(var(--pixel-size) * 1);
++}
++
++.undo:hover {
++  opacity: 0.85;
++}
++
++@media (min-width: 512px) {
++  .undo {
++    border: calc(var(--pixel-size) * 1) solid var(--secondary-background);
++    font-size: calc(var(--pixel-size) * 2);
++    line-height: calc(var(--pixel-size) * 3.5);
++  }
++}
++
+ .twenty48 > footer {
+   margin: calc(var(--pixel-size) * 3) calc(var(--pixel-size) * 0);
+   font-weight: 600;

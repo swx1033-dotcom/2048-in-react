@@ -1,10 +1,14 @@
 import Head from "next/head";
 import Image from "next/image";
+import { useContext } from "react";
 import Board from "@/components/board";
 import Score from "@/components/score";
+import { GameContext } from "@/context/game-context";
 import styles from "@/styles/index.module.css";
 
 export default function Home() {
+  const { undo } = useContext(GameContext);
+
   return (
     <div className={styles.twenty48}>
       <Head>
@@ -25,6 +29,9 @@ export default function Home() {
       </Head>
       <header>
         <h1>2048</h1>
+        <button onClick={undo} className={styles.undo}>
+          Undo
+        </button>
         <Score />
       </header>
       <main>

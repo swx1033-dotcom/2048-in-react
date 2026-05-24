@@ -5,6 +5,14 @@ import { Tile, TileMap } from "@/models/tile";
 
 type GameStatus = "ongoing" | "won" | "lost";
 
+type StateSnapshot = {
+  board: string[][];
+  tiles: TileMap;
+  tilesByIds: string[];
+  score: number;
+  status: GameStatus;
+};
+
 type State = {
   board: string[][];
   tiles: TileMap;
@@ -12,6 +20,7 @@ type State = {
   hasChanged: boolean;
   score: number;
   status: GameStatus;
+  history: StateSnapshot[];
 };
 type Action =
   | { type: "create_tile"; tile: Tile }
@@ -21,7 +30,9 @@ type Action =
   | { type: "move_left" }
   | { type: "move_right" }
   | { type: "reset_game" }
-  | { type: "update_status"; status: GameStatus };
+  | { type: "update_status"; status: GameStatus }
+  | { type: "undo" }
+  | { type: "save_history" };
 
 function createBoard() {
   const board: string[][] = [];
@@ -33,6 +44,16 @@ function createBoard() {
   return board;
 }
 
+function createStateSnapshot(state: Omit<State, "hasChanged" | "history">): StateSnapshot {
+  return {
+    board: JSON.parse(JSON.stringify(state.board)),
+    tiles: JSON.parse(JSON.stringify(state.tiles)),
+    tilesByIds: [...state.tilesByIds],
+    score: state.score,
+    status: state.status,
+  };
+}
+
 export const initialState: State = {
   board: createBoard(),
   tiles: {},
@@ -40,6 +61,7 @@ export const initialState: State = {
   hasChanged: false,
   score: 0,
   status: "ongoing",
+  history: [],
 };
 
 export default function gameReducer(
@@ -47,6 +69,25 @@ export default function gameReducer(
   action: Action,
 ) {
   switch (action.type) {
+    case "save_history": {
+      return {
+        ...state,
+        history: [...state.history, createStateSnapshot(state)],
+      };
+    }
+    case "undo": {
+      if (state.history.length === 0) {
+        return state;
+      }
+      const previousState = state.history[state.history.length - 1];
+      const newHistory = state.history.slice(0, -1);
+      return {
+        ...state,
+        ...previousState,
+        hasChanged: false,
+        history: newHistory,
+      };
+    }
     case "clean_up": {
       const flattenBoard = flattenDeep(state.board);
       const newTiles: TileMap = flattenBoard.reduce(
@@ -132,13 +173,20 @@ export default function gameReducer(
           }
         }
       }
-      return {
+      const newState = {
         ...state,
         board: newBoard,
         tiles: newTiles,
         hasChanged,
         score,
       };
+      if (hasChanged) {
+        return {
+          ...newState,
+          history: [...state.history, createStateSnapshot(state)],
+        };
+      }
+      return newState;
     }
     case "move_down": {
       const newBoard = createBoard();
@@ -183,13 +231,20 @@ export default function gameReducer(
           }
         }
       }
-      return {
+      const newState = {
         ...state,
         board: newBoard,
         tiles: newTiles,
         hasChanged,
         score,
       };
+      if (hasChanged) {
+        return {
+          ...newState,
+          history: [...state.history, createStateSnapshot(state)],
+        };
+      }
+      return newState;
     }
     case "move_left": {
       const newBoard = createBoard();
@@ -234,13 +289,20 @@ export default function gameReducer(
           }
         }
       }
-      return {
+      const newState = {
         ...state,
         board: newBoard,
         tiles: newTiles,
         hasChanged,
         score,
       };
+      if (hasChanged) {
+        return {
+          ...newState,
+          history: [...state.history, createStateSnapshot(state)],
+        };
+      }
+      return newState;
     }
     case "move_right": {
       const newBoard = createBoard();
@@ -285,13 +347,20 @@ export default function gameReducer(
           }
         }
       }
-      return {
+      const newState = {
         ...state,
         board: newBoard,
         tiles: newTiles,
         hasChanged,
         score,
       };
+      if (hasChanged) {
+        return {
+          ...newState,
+          history: [...state.history, createStateSnapshot(state)],
+        };
+      }
+      return newState;
     }
     case "reset_game":
       return initialState;

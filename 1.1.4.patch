@@ -1,0 +1,264 @@
+diff --git a/components/board.tsx b/components/board.tsx
+index 57e2531..5977bda 100644
+--- a/components/board.tsx
++++ b/components/board.tsx
+@@ -7,11 +7,19 @@ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
+ import Splash from "./splash";
+ 
+ export default function Board() {
+-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
++  const { getTiles, moveTiles, startGame, status, undo, canUndo } = useContext(GameContext);
+   const initialized = useRef(false);
+ 
+   const handleKeyDown = useCallback(
+     (e: KeyboardEvent) => {
++      // Check for Ctrl+Z or Cmd+Z
++      if ((e.ctrlKey || e.metaKey) && e.key === "z") {
++        e.preventDefault();
++        if (canUndo) {
++          undo();
++        }
++        return;
++      }
+       // disables page scrolling with keyboard arrows
+       e.preventDefault();
+ 
+@@ -30,7 +38,7 @@ export default function Board() {
+           break;
+       }
+     },
+-    [moveTiles],
++    [moveTiles, undo, canUndo],
+   );
+ 
+   const handleSwipe = useCallback(
+diff --git a/context/game-context.tsx b/context/game-context.tsx
+index 0b93edc..15eba8a 100644
+--- a/context/game-context.tsx
++++ b/context/game-context.tsx
+@@ -22,6 +22,8 @@ export const GameContext = createContext({
+   moveTiles: (_: MoveDirection) => {},
+   getTiles: () => [] as Tile[],
+   startGame: () => {},
++  undo: () => {},
++  canUndo: false,
+ });
+ 
+ export default function GameProvider({ children }: PropsWithChildren) {
+@@ -71,6 +73,10 @@ export default function GameProvider({ children }: PropsWithChildren) {
+     dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
+   };
+ 
++  const undo = useCallback(() => {
++    dispatch({ type: "undo" });
++  }, []);
++
+   const checkGameState = () => {
+     const isWon =
+       Object.values(gameState.tiles).filter((t) => t.value === gameWinTileValue)
+@@ -130,6 +136,8 @@ export default function GameProvider({ children }: PropsWithChildren) {
+         getTiles,
+         moveTiles,
+         startGame,
++        undo,
++        canUndo: gameState.history.length > 0,
+       }}
+     >
+       {children}
+diff --git a/pages/index.tsx b/pages/index.tsx
+index 75c6e8b..f49d0d3 100644
+--- a/pages/index.tsx
++++ b/pages/index.tsx
+@@ -2,6 +2,7 @@ import Head from "next/head";
+ import Image from "next/image";
+ import Board from "@/components/board";
+ import Score from "@/components/score";
++import UndoButton from "@/components/undo-button";
+ import styles from "@/styles/index.module.css";
+ 
+ export default function Home() {
+@@ -26,6 +27,7 @@ export default function Home() {
+       <header>
+         <h1>2048</h1>
+         <Score />
++        <UndoButton />
+       </header>
+       <main>
+         <Board />
+diff --git a/reducers/game-reducer.ts b/reducers/game-reducer.ts
+index 47d6226..7dd9b7b 100644
+--- a/reducers/game-reducer.ts
++++ b/reducers/game-reducer.ts
+@@ -5,6 +5,14 @@ import { Tile, TileMap } from "@/models/tile";
+ 
+ type GameStatus = "ongoing" | "won" | "lost";
+ 
++type StateSnapshot = {
++  board: string[][];
++  tiles: TileMap;
++  tilesByIds: string[];
++  score: number;
++  status: GameStatus;
++};
++
+ type State = {
+   board: string[][];
+   tiles: TileMap;
+@@ -12,6 +20,7 @@ type State = {
+   hasChanged: boolean;
+   score: number;
+   status: GameStatus;
++  history: StateSnapshot[];
+ };
+ type Action =
+   | { type: "create_tile"; tile: Tile }
+@@ -21,7 +30,9 @@ type Action =
+   | { type: "move_left" }
+   | { type: "move_right" }
+   | { type: "reset_game" }
+-  | { type: "update_status"; status: GameStatus };
++  | { type: "update_status"; status: GameStatus }
++  | { type: "undo" }
++  | { type: "save_history" };
+ 
+ function createBoard() {
+   const board: string[][] = [];
+@@ -33,6 +44,16 @@ function createBoard() {
+   return board;
+ }
+ 
++function createStateSnapshot(state: Omit<State, "hasChanged" | "history">): StateSnapshot {
++  return {
++    board: JSON.parse(JSON.stringify(state.board)),
++    tiles: JSON.parse(JSON.stringify(state.tiles)),
++    tilesByIds: [...state.tilesByIds],
++    score: state.score,
++    status: state.status,
++  };
++}
++
+ export const initialState: State = {
+   board: createBoard(),
+   tiles: {},
+@@ -40,6 +61,7 @@ export const initialState: State = {
+   hasChanged: false,
+   score: 0,
+   status: "ongoing",
++  history: [],
+ };
+ 
+ export default function gameReducer(
+@@ -47,6 +69,25 @@ export default function gameReducer(
+   action: Action,
+ ) {
+   switch (action.type) {
++    case "save_history": {
++      return {
++        ...state,
++        history: [...state.history, createStateSnapshot(state)],
++      };
++    }
++    case "undo": {
++      if (state.history.length === 0) {
++        return state;
++      }
++      const previousState = state.history[state.history.length - 1];
++      const newHistory = state.history.slice(0, -1);
++      return {
++        ...state,
++        ...previousState,
++        hasChanged: false,
++        history: newHistory,
++      };
++    }
+     case "clean_up": {
+       const flattenBoard = flattenDeep(state.board);
+       const newTiles: TileMap = flattenBoard.reduce(
+@@ -132,13 +173,20 @@ export default function gameReducer(
+           }
+         }
+       }
+-      return {
++      const newState = {
+         ...state,
+         board: newBoard,
+         tiles: newTiles,
+         hasChanged,
+         score,
+       };
++      if (hasChanged) {
++        return {
++          ...newState,
++          history: [...state.history, createStateSnapshot(state)],
++        };
++      }
++      return newState;
+     }
+     case "move_down": {
+       const newBoard = createBoard();
+@@ -183,13 +231,20 @@ export default function gameReducer(
+           }
+         }
+       }
+-      return {
++      const newState = {
+         ...state,
+         board: newBoard,
+         tiles: newTiles,
+         hasChanged,
+         score,
+       };
++      if (hasChanged) {
++        return {
++          ...newState,
++          history: [...state.history, createStateSnapshot(state)],
++        };
++      }
++      return newState;
+     }
+     case "move_left": {
+       const newBoard = createBoard();
+@@ -234,13 +289,20 @@ export default function gameReducer(
+           }
+         }
+       }
+-      return {
++      const newState = {
+         ...state,
+         board: newBoard,
+         tiles: newTiles,
+         hasChanged,
+         score,
+       };
++      if (hasChanged) {
++        return {
++          ...newState,
++          history: [...state.history, createStateSnapshot(state)],
++        };
++      }
++      return newState;
+     }
+     case "move_right": {
+       const newBoard = createBoard();
+@@ -285,13 +347,20 @@ export default function gameReducer(
+           }
+         }
+       }
+-      return {
++      const newState = {
+         ...state,
+         board: newBoard,
+         tiles: newTiles,
+         hasChanged,
+         score,
+       };
++      if (hasChanged) {
++        return {
++          ...newState,
++          history: [...state.history, createStateSnapshot(state)],
++        };
++      }
++      return newState;
+     }
+     case "reset_game":
+       return initialState;

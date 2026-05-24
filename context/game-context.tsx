@@ -22,6 +22,8 @@ export const GameContext = createContext({
   moveTiles: (_: MoveDirection) => {},
   getTiles: () => [] as Tile[],
   startGame: () => {},
+  undo: () => {},
+  canUndo: false,
 });
 
 export default function GameProvider({ children }: PropsWithChildren) {
@@ -70,6 +72,10 @@ export default function GameProvider({ children }: PropsWithChildren) {
     dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
     dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
   };
+
+  const undo = useCallback(() => {
+    dispatch({ type: "undo" });
+  }, []);
 
   const checkGameState = () => {
     const isWon =
@@ -130,6 +136,8 @@ export default function GameProvider({ children }: PropsWithChildren) {
         getTiles,
         moveTiles,
         startGame,
+        undo,
+        canUndo: gameState.history.length > 0,
       }}
     >
       {children}

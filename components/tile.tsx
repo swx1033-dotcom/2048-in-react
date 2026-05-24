@@ -10,7 +10,7 @@ import { Tile as TileProps } from "@/models/tile";
 import styles from "@/styles/tile.module.css";
 import usePreviousProps from "@/hooks/use-previous-props";
 
-export default function Tile({ position, value }: TileProps) {
+export default function Tile({ position, value, type }: TileProps) {
   const isWideScreen = useMediaQuery({ minWidth: 512 });
   const containerWidth = isWideScreen
     ? containerWidthDesktop
@@ -24,22 +24,24 @@ export default function Tile({ position, value }: TileProps) {
     (position / tileCountPerDimension) * containerWidth;
 
   useEffect(() => {
-    if (hasChanged) {
+    if (hasChanged && type !== "obstacle") {
       setScale(1.1);
       setTimeout(() => setScale(1), mergeAnimationDuration);
     }
-  }, [hasChanged]);
+  }, [hasChanged, type]);
+
+  const tileClass = type === "obstacle" ? styles.tileObstacle : styles[`tile${value}`];
 
   const style = {
     left: positionToPixels(position[0]),
     top: positionToPixels(position[1]),
     transform: `scale(${scale})`,
-    zIndex: value,
+    zIndex: type === "obstacle" ? 9999 : value,
   };
 
   return (
-    <div className={`${styles.tile} ${styles[`tile${value}`]}`} style={style}>
-      {value}
+    <div className={`${styles.tile} ${tileClass}`} style={style}>
+      {type === "obstacle" ? "✕" : value}
     </div>
   );
 }

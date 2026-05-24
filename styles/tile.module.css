@@ -135,3 +135,11 @@
     0 0 30px 10px rgba(243, 215, 116, 0.55556),
     inset 0 0 0 1px rgba(255, 255, 255, 0.33333);
 }
+
+.tileObstacle {
+  background: #4a4a4a;
+  color: #ff4444;
+  box-shadow:
+    0 0 20px 5px rgba(255, 68, 68, 0.3),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+}

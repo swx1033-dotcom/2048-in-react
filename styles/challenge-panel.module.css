@@ -1,0 +1,147 @@
+.challengePanelContainer {
+  margin-top: 20px;
+  width: 100%;
+}
+
+.toggleButton {
+  background: #8f7a66;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 5px;
+  font-size: 16px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background 0.2s;
+}
+
+.toggleButton:hover {
+  background: #9f8b77;
+}
+
+.panel {
+  background: #bbada0;
+  border-radius: 5px;
+  padding: 20px;
+  margin-top: 10px;
+}
+
+.section {
+  margin-bottom: 20px;
+}
+
+.section:last-child {
+  margin-bottom: 0;
+}
+
+.sectionTitle {
+  color: #776e65;
+  margin: 0 0 10px 0;
+  font-size: 18px;
+}
+
+.buttonRow {
+  display: flex;
+  gap: 10px;
+}
+
+.actionButton {
+  background: #8f7a66;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background 0.2s;
+}
+
+.actionButton:hover:not(:disabled) {
+  background: #9f8b77;
+}
+
+.actionButton:disabled {
+  background: #a99a8b;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.activeChallengesList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.activeChallenge {
+  background: #cdc1b4;
+  padding: 10px;
+  border-radius: 5px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.activeChallengeName {
+  font-weight: bold;
+  color: #776e65;
+}
+
+.activeChallengeInfo {
+  color: #8f7a66;
+  font-size: 14px;
+}
+
+.pluginsList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pluginCard {
+  background: #cdc1b4;
+  padding: 15px;
+  border-radius: 5px;
+  border: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.pluginCardActive {
+  border-color: #8f7a66;
+  background: #d6ccc2;
+}
+
+.pluginHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.pluginName {
+  font-weight: bold;
+  color: #776e65;
+  font-size: 16px;
+}
+
+.togglePluginButton {
+  background: #8f7a66;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  transition: background 0.2s;
+}
+
+.togglePluginButton:hover {
+  background: #9f8b77;
+}
+
+.pluginDescription {
+  color: #8f7a66;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+}

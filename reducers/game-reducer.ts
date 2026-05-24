@@ -2,10 +2,11 @@ import { flattenDeep, isEqual, isNil } from "lodash";
 import { uid } from "uid";
 import { tileCountPerDimension } from "@/constants";
 import { Tile, TileMap } from "@/models/tile";
+import { MoveDirection } from "@/challenges/types";
 
 type GameStatus = "ongoing" | "won" | "lost";
 
-type State = {
+export type State = {
   board: string[][];
   tiles: TileMap;
   tilesByIds: string[];
@@ -13,7 +14,8 @@ type State = {
   score: number;
   status: GameStatus;
 };
-type Action =
+
+export type Action =
   | { type: "create_tile"; tile: Tile }
   | { type: "clean_up" }
   | { type: "move_up" }
@@ -21,7 +23,8 @@ type Action =
   | { type: "move_left" }
   | { type: "move_right" }
   | { type: "reset_game" }
-  | { type: "update_status"; status: GameStatus };
+  | { type: "update_status"; status: GameStatus }
+  | { type: "restore_state"; state: State };
 
 function createBoard() {
   const board: string[][] = [];
@@ -41,6 +44,85 @@ export const initialState: State = {
   score: 0,
   status: "ongoing",
 };
+
+function processMove(
+  state: State,
+  direction: MoveDirection,
+  getStartIndex: (dim: number) => number,
+  getNextIndex: (idx: number) => number,
+  shouldContinue: (idx: number) => boolean,
+  updatePosition: (tile: Tile, newIdx: number, fixedIdx: number) => [number, number],
+  isFixedX: boolean
+) {
+  const newBoard = createBoard();
+  const newTiles: TileMap = {};
+  let hasChanged = false;
+  let { score } = state;
+  const dimSize = tileCountPerDimension;
+
+  for (let fixedIdx = 0; fixedIdx < dimSize; fixedIdx++) {
+    let newIdx = getStartIndex(dimSize);
+    let previousTile: Tile | undefined;
+
+    for (
+      let idx = getStartIndex(dimSize);
+      shouldContinue(idx);
+      idx = getNextIndex(idx)
+    ) {
+      const x = isFixedX ? fixedIdx : idx;
+      const y = isFixedX ? idx : fixedIdx;
+      const tileId = state.board[y][x];
+      const currentTile = state.tiles[tileId];
+
+      if (!isNil(tileId)) {
+        if (currentTile.type === "obstacle") {
+          newBoard[y][x] = tileId;
+          newTiles[tileId] = { ...currentTile };
+          previousTile = undefined;
+          continue;
+        }
+
+        if (previousTile?.value === currentTile.value && previousTile.type !== "obstacle") {
+          score += previousTile.value * 2;
+          newTiles[previousTile.id as string] = {
+            ...previousTile,
+            value: previousTile.value * 2,
+            mergedCount: (previousTile.mergedCount || 0) + 1,
+          };
+          newTiles[tileId] = {
+            ...currentTile,
+            position: updatePosition(currentTile, newIdx, fixedIdx),
+          };
+          previousTile = undefined;
+          hasChanged = true;
+          continue;
+        }
+
+        const newPos = updatePosition(currentTile, newIdx, fixedIdx);
+        const newX = isFixedX ? fixedIdx : newIdx;
+        const newY = isFixedX ? newIdx : fixedIdx;
+        newBoard[newY][newX] = tileId;
+        newTiles[tileId] = {
+          ...currentTile,
+          position: newPos,
+        };
+        previousTile = newTiles[tileId];
+        if (!isEqual(currentTile.position, newPos)) {
+          hasChanged = true;
+        }
+        newIdx = getNextIndex(newIdx);
+      }
+    }
+  }
+
+  return {
+    ...state,
+    board: newBoard,
+    tiles: newTiles,
+    hasChanged,
+    score,
+  };
+}
 
 export default function gameReducer(
   state: State = initialState,
@@ -83,6 +165,8 @@ export default function gameReducer(
           ...state.tiles,
           [tileId]: {
             id: tileId,
+            type: "normal",
+            mergedCount: 0,
             ...action.tile,
           },
         },
@@ -90,208 +174,48 @@ export default function gameReducer(
       };
     }
     case "move_up": {
-      const newBoard = createBoard();
-      const newTiles: TileMap = {};
-      let hasChanged = false;
-      let { score } = state;
-
-      for (let x = 0; x < tileCountPerDimension; x++) {
-        let newY = 0;
-        let previousTile: Tile | undefined;
-
-        for (let y = 0; y < tileCountPerDimension; y++) {
-          const tileId = state.board[y][x];
-          const currentTile = state.tiles[tileId];
-
-          if (!isNil(tileId)) {
-            if (previousTile?.value === currentTile.value) {
-              score += previousTile.value * 2;
-              newTiles[previousTile.id as string] = {
-                ...previousTile,
-                value: previousTile.value * 2,
-              };
-              newTiles[tileId] = {
-                ...currentTile,
-                position: [x, newY - 1],
-              };
-              previousTile = undefined;
-              hasChanged = true;
-              continue;
-            }
-
-            newBoard[newY][x] = tileId;
-            newTiles[tileId] = {
-              ...currentTile,
-              position: [x, newY],
-            };
-            previousTile = newTiles[tileId];
-            if (!isEqual(currentTile.position, [x, newY])) {
-              hasChanged = true;
-            }
-            newY++;
-          }
-        }
-      }
-      return {
-        ...state,
-        board: newBoard,
-        tiles: newTiles,
-        hasChanged,
-        score,
-      };
+      return processMove(
+        state,
+        "move_up",
+        () => 0,
+        (idx) => idx + 1,
+        (idx) => idx < tileCountPerDimension,
+        (tile, newIdx, fixedIdx) => [fixedIdx, newIdx],
+        true
+      );
     }
     case "move_down": {
-      const newBoard = createBoard();
-      const newTiles: TileMap = {};
-      let hasChanged = false;
-      let { score } = state;
-
-      for (let x = 0; x < tileCountPerDimension; x++) {
-        let newY = tileCountPerDimension - 1;
-        let previousTile: Tile | undefined;
-
-        for (let y = tileCountPerDimension - 1; y >= 0; y--) {
-          const tileId = state.board[y][x];
-          const currentTile = state.tiles[tileId];
-
-          if (!isNil(tileId)) {
-            if (previousTile?.value === currentTile.value) {
-              score += previousTile.value * 2;
-              newTiles[previousTile.id as string] = {
-                ...previousTile,
-                value: previousTile.value * 2,
-              };
-              newTiles[tileId] = {
-                ...currentTile,
-                position: [x, newY + 1],
-              };
-              previousTile = undefined;
-              hasChanged = true;
-              continue;
-            }
-
-            newBoard[newY][x] = tileId;
-            newTiles[tileId] = {
-              ...currentTile,
-              position: [x, newY],
-            };
-            previousTile = newTiles[tileId];
-            if (!isEqual(currentTile.position, [x, newY])) {
-              hasChanged = true;
-            }
-            newY--;
-          }
-        }
-      }
-      return {
-        ...state,
-        board: newBoard,
-        tiles: newTiles,
-        hasChanged,
-        score,
-      };
+      return processMove(
+        state,
+        "move_down",
+        (dim) => dim - 1,
+        (idx) => idx - 1,
+        (idx) => idx >= 0,
+        (tile, newIdx, fixedIdx) => [fixedIdx, newIdx],
+        true
+      );
     }
     case "move_left": {
-      const newBoard = createBoard();
-      const newTiles: TileMap = {};
-      let hasChanged = false;
-      let { score } = state;
-
-      for (let y = 0; y < tileCountPerDimension; y++) {
-        let newX = 0;
-        let previousTile: Tile | undefined;
-
-        for (let x = 0; x < tileCountPerDimension; x++) {
-          const tileId = state.board[y][x];
-          const currentTile = state.tiles[tileId];
-
-          if (!isNil(tileId)) {
-            if (previousTile?.value === currentTile.value) {
-              score += previousTile.value * 2;
-              newTiles[previousTile.id as string] = {
-                ...previousTile,
-                value: previousTile.value * 2,
-              };
-              newTiles[tileId] = {
-                ...currentTile,
-                position: [newX - 1, y],
-              };
-              previousTile = undefined;
-              hasChanged = true;
-              continue;
-            }
-
-            newBoard[y][newX] = tileId;
-            newTiles[tileId] = {
-              ...currentTile,
-              position: [newX, y],
-            };
-            previousTile = newTiles[tileId];
-            if (!isEqual(currentTile.position, [newX, y])) {
-              hasChanged = true;
-            }
-            newX++;
-          }
-        }
-      }
-      return {
-        ...state,
-        board: newBoard,
-        tiles: newTiles,
-        hasChanged,
-        score,
-      };
+      return processMove(
+        state,
+        "move_left",
+        () => 0,
+        (idx) => idx + 1,
+        (idx) => idx < tileCountPerDimension,
+        (tile, newIdx, fixedIdx) => [newIdx, fixedIdx],
+        false
+      );
     }
     case "move_right": {
-      const newBoard = createBoard();
-      const newTiles: TileMap = {};
-      let hasChanged = false;
-      let { score } = state;
-
-      for (let y = 0; y < tileCountPerDimension; y++) {
-        let newX = tileCountPerDimension - 1;
-        let previousTile: Tile | undefined;
-
-        for (let x = tileCountPerDimension - 1; x >= 0; x--) {
-          const tileId = state.board[y][x];
-          const currentTile = state.tiles[tileId];
-
-          if (!isNil(tileId)) {
-            if (previousTile?.value === currentTile.value) {
-              score += previousTile.value * 2;
-              newTiles[previousTile.id as string] = {
-                ...previousTile,
-                value: previousTile.value * 2,
-              };
-              newTiles[tileId] = {
-                ...currentTile,
-                position: [newX + 1, y],
-              };
-              previousTile = undefined;
-              hasChanged = true;
-              continue;
-            }
-
-            newBoard[y][newX] = tileId;
-            newTiles[tileId] = {
-              ...state.tiles[tileId],
-              position: [newX, y],
-            };
-            previousTile = newTiles[tileId];
-            if (!isEqual(currentTile.position, [newX, y])) {
-              hasChanged = true;
-            }
-            newX--;
-          }
-        }
-      }
-      return {
-        ...state,
-        board: newBoard,
-        tiles: newTiles,
-        hasChanged,
-        score,
-      };
+      return processMove(
+        state,
+        "move_right",
+        (dim) => dim - 1,
+        (idx) => idx - 1,
+        (idx) => idx >= 0,
+        (tile, newIdx, fixedIdx) => [newIdx, fixedIdx],
+        false
+      );
     }
     case "reset_game":
       return initialState;
@@ -300,6 +224,8 @@ export default function gameReducer(
         ...state,
         status: action.status,
       };
+    case "restore_state":
+      return action.state;
     default:
       return state;
   }

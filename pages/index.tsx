@@ -3,8 +3,21 @@ import Image from "next/image";
 import Board from "@/components/board";
 import Score from "@/components/score";
 import styles from "@/styles/index.module.css";
+import { useContext } from "react";
+import { GameContext } from "@/context/game-context";
 
 export default function Home() {
+  const { startGame, boardSize, infiniteMode } = useContext(GameContext);
+
+  const handleModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+    if (value === "infinite") {
+      startGame(4, true);
+    } else {
+      startGame(parseInt(value, 10), false);
+    }
+  };
+
   return (
     <div className={styles.twenty48}>
       <Head>
@@ -25,7 +38,19 @@ export default function Home() {
       </Head>
       <header>
         <h1>2048</h1>
-        <Score />
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <select 
+            value={infiniteMode ? "infinite" : boardSize.toString()} 
+            onChange={handleModeChange}
+            style={{ padding: '0.5rem', borderRadius: '4px' }}
+          >
+            <option value="4">4x4</option>
+            <option value="5">5x5</option>
+            <option value="6">6x6</option>
+            <option value="infinite">Infinite Mode</option>
+          </select>
+          <Score />
+        </div>
       </header>
       <main>
         <Board />

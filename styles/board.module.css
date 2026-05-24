@@ -1,6 +1,6 @@
 .board {
   position: relative;
-  width: calc(var(--pixel-size) * 8 * 4 + var(--pixel-size) * 5);
+  width: calc(var(--pixel-size) * 8 * var(--board-size, 4) + var(--pixel-size) * (var(--board-size, 4) + 1));
 }
 
 .grid {
@@ -12,9 +12,9 @@
 }
 
 .cell {
-  width: calc(var(--pixel-size) * 8);
-  height: calc(var(--pixel-size) * 8);
-  margin: calc(var(--pixel-size) * 0.5);
+  width: calc(var(--pixel-size) * (8 * 4 / var(--board-size, 4)));
+  height: calc(var(--pixel-size) * (8 * 4 / var(--board-size, 4)));
+  margin: calc(var(--pixel-size) * (0.5 * 4 / var(--board-size, 4)));
   border-radius: calc(var(--pixel-size) * 0.5);
   background: var(--cell-background);
 }
@@ -22,7 +22,7 @@
 .tiles {
   position: absolute;
   z-index: 2;
-  margin: calc(var(--pixel-size) * 0.5);
+  margin: calc(var(--pixel-size) * (0.5 * 4 / var(--board-size, 4)));
   left: 0;
   top: 0;
   right: 0;
@@ -31,7 +31,7 @@
 
 @media (min-width: 512px) {
   .board {
-    width: calc(var(--pixel-size) * 12.5 * 4 + var(--pixel-size) * 10);
+    width: calc(var(--pixel-size) * 12.5 * var(--board-size, 4) + var(--pixel-size) * 2 * (var(--board-size, 4) + 1));
   }
 
   .grid {
@@ -39,12 +39,12 @@
   }
 
   .cell {
-    width: calc(var(--pixel-size) * 12.5);
-    height: calc(var(--pixel-size) * 12.5);
-    margin: calc(var(--pixel-size) * 1);
+    width: calc(var(--pixel-size) * (12.5 * 4 / var(--board-size, 4)));
+    height: calc(var(--pixel-size) * (12.5 * 4 / var(--board-size, 4)));
+    margin: calc(var(--pixel-size) * (1 * 4 / var(--board-size, 4)));
   }
 
   .tiles {
-    margin: calc(var(--pixel-size) * 1);
+    margin: calc(var(--pixel-size) * (1 * 4 / var(--board-size, 4)));
   }
 }

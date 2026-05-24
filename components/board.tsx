@@ -1,4 +1,5 @@
-import { useCallback, useContext, useEffect, useRef } from "react";
+import { useCallback, useContext, useEffect } from "react";
+import { tileCountPerDimension } from "@/constants";
 import { Tile as TileModel } from "@/models/tile";
 import styles from "@/styles/board.module.css";
 import Tile from "./tile";
@@ -7,25 +8,25 @@ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
 import Splash from "./splash";
 
 export default function Board() {
-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
-  const initialized = useRef(false);
+  const { getTiles, getObstacles, moveTiles, status } = useContext(GameContext);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // disables page scrolling with keyboard arrows
-      e.preventDefault();
-
       switch (e.code) {
         case "ArrowUp":
+          e.preventDefault();
           moveTiles("move_up");
           break;
         case "ArrowDown":
+          e.preventDefault();
           moveTiles("move_down");
           break;
         case "ArrowLeft":
+          e.preventDefault();
           moveTiles("move_left");
           break;
         case "ArrowRight":
+          e.preventDefault();
           moveTiles("move_right");
           break;
       }
@@ -41,12 +42,10 @@ export default function Board() {
         } else {
           moveTiles("move_left");
         }
+      } else if (deltaY > 0) {
+        moveTiles("move_down");
       } else {
-        if (deltaY > 0) {
-          moveTiles("move_down");
-        } else {
-          moveTiles("move_up");
-        }
+        moveTiles("move_up");
       }
     },
     [moveTiles],
@@ -54,27 +53,27 @@ export default function Board() {
 
   const renderGrid = () => {
     const cells: JSX.Element[] = [];
-    const totalCellsCount = 16;
+    const obstaclePositions = new Set(
+      getObstacles().map((tile: TileModel) => `${tile.position[0]}:${tile.position[1]}`),
+    );
 
-    for (let index = 0; index < totalCellsCount; index += 1) {
-      cells.push(<div className={styles.cell} key={index} />);
+    for (let y = 0; y < tileCountPerDimension; y += 1) {
+      for (let x = 0; x < tileCountPerDimension; x += 1) {
+        const cellKey = `${x}:${y}`;
+        const cellClassName = obstaclePositions.has(cellKey)
+          ? `${styles.cell} ${styles.obstacleCell}`
+          : styles.cell;
+
+        cells.push(<div className={cellClassName} key={cellKey} />);
+      }
     }
 
     return cells;
   };
 
   const renderTiles = () => {
-    return getTiles().map((tile: TileModel) => (
-      <Tile key={`${tile.id}`} {...tile} />
-    ));
+    return getTiles().map((tile: TileModel) => <Tile key={`${tile.id}`} {...tile} />);
   };
-
-  useEffect(() => {
-    if (initialized.current === false) {
-      startGame();
-      initialized.current = true;
-    }
-  }, [startGame]);
 
   useEffect(() => {
     window.addEventListener("keydown", handleKeyDown);

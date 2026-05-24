@@ -1,10 +1,55 @@
 import Head from "next/head";
 import Image from "next/image";
+import { ChangeEvent, useContext } from "react";
 import Board from "@/components/board";
 import Score from "@/components/score";
+import {
+  ChallengeModeId,
+  MoveDirection,
+  challengeModeDefinitions,
+  challengeModeOrder,
+  moveDirectionLabels,
+} from "@/constants";
+import { GameContext } from "@/context/game-context";
 import styles from "@/styles/index.module.css";
 
+const formatCountdown = (timeRemainingMs: number | null) => {
+  if (timeRemainingMs === null) {
+    return "未启用";
+  }
+
+  const totalSeconds = Math.max(0, Math.ceil(timeRemainingMs / 1000));
+  const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+
+  return `${minutes}:${seconds}`;
+};
+
 export default function Home() {
+  const {
+    replayGame,
+    undoMove,
+    canUndo,
+    enabledModes,
+    challengeConfig,
+    disabledDirections,
+    timeRemainingMs,
+    setChallengeModeEnabled,
+    updateChallengeModeConfig,
+  } = useContext(GameContext);
+
+  const handleToggleMode = (modeId: ChallengeModeId) => {
+    setChallengeModeEnabled(modeId, !enabledModes[modeId]);
+  };
+
+  const handleConfigChange = (
+    modeId: ChallengeModeId,
+    field: string,
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    updateChallengeModeConfig(modeId, field, Number(event.target.value));
+  };
+
   return (
     <div className={styles.twenty48}>
       <Head>
@@ -27,8 +72,82 @@ export default function Home() {
         <h1>2048</h1>
         <Score />
       </header>
-      <main>
+      <main className={styles.main}>
         <Board />
+        <section className={styles.challengePanel}>
+          <div className={styles.challengeHeader}>
+            <div>
+              <h2>Challenge Mode</h2>
+              <p>模式可自由组合，修改开关或参数后会立即重开当前对局。</p>
+            </div>
+            <div className={styles.challengeActions}>
+              <button onClick={undoMove} disabled={!canUndo} type="button">
+                Undo
+              </button>
+              <button onClick={replayGame} type="button">
+                Replay
+              </button>
+            </div>
+          </div>
+          <div className={styles.challengeSummary}>
+            <div>
+              <span>倒计时</span>
+              <strong>{formatCountdown(timeRemainingMs)}</strong>
+            </div>
+            <div>
+              <span>禁用方向</span>
+              <strong>
+                {disabledDirections.length > 0
+                  ? disabledDirections
+                      .map((direction: MoveDirection) => moveDirectionLabels[direction])
+                      .join("、")
+                  : "无"}
+              </strong>
+            </div>
+          </div>
+          <div className={styles.modeGrid}>
+            {challengeModeOrder.map((modeId) => {
+              const definition = challengeModeDefinitions[modeId];
+              const modeConfig = challengeConfig[modeId] as Record<string, number>;
+              const isEnabled = enabledModes[modeId];
+
+              return (
+                <section
+                  className={`${styles.modeCard} ${isEnabled ? styles.modeCardActive : ""}`}
+                  key={modeId}
+                >
+                  <label className={styles.modeToggle}>
+                    <input
+                      checked={isEnabled}
+                      onChange={() => handleToggleMode(modeId)}
+                      type="checkbox"
+                    />
+                    <span>{definition.label}</span>
+                  </label>
+                  <p>{definition.description}</p>
+                  <div className={styles.modeControls}>
+                    {definition.controls.map((control) => (
+                      <label className={styles.modeControl} key={`${modeId}-${control.key}`}>
+                        <span>{control.label}</span>
+                        <input
+                          disabled={!isEnabled}
+                          max={control.max}
+                          min={control.min}
+                          onChange={(event) =>
+                            handleConfigChange(modeId, control.key, event)
+                          }
+                          step={control.step}
+                          type="number"
+                          value={modeConfig[control.key]}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </section>
       </main>
       <div>
         <h2>🚀 Create your own game</h2>

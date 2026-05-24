@@ -1,30 +1,32 @@
 import { flattenDeep, isEqual, isNil } from "lodash";
 import { uid } from "uid";
-import { tileCountPerDimension } from "@/constants";
-import { Tile, TileMap } from "@/models/tile";
+import { MoveDirection, tileCountPerDimension } from "@/constants";
+import { Tile, TileMap, isObstacleTile, normalizeTile } from "@/models/tile";
 
-type GameStatus = "ongoing" | "won" | "lost";
+export type GameStatus = "ongoing" | "won" | "lost";
 
-type State = {
-  board: string[][];
+export type MovementRules = {
+  maxMergesPerMove?: number;
+};
+
+export type State = {
+  board: (string | undefined)[][];
   tiles: TileMap;
   tilesByIds: string[];
   hasChanged: boolean;
   score: number;
   status: GameStatus;
 };
-type Action =
+
+export type Action =
   | { type: "create_tile"; tile: Tile }
   | { type: "clean_up" }
-  | { type: "move_up" }
-  | { type: "move_down" }
-  | { type: "move_left" }
-  | { type: "move_right" }
+  | { type: MoveDirection; rules?: MovementRules }
   | { type: "reset_game" }
   | { type: "update_status"; status: GameStatus };
 
-function createBoard() {
-  const board: string[][] = [];
+export function createBoard() {
+  const board: (string | undefined)[][] = [];
 
   for (let i = 0; i < tileCountPerDimension; i += 1) {
     board[i] = new Array(tileCountPerDimension).fill(undefined);
@@ -33,13 +35,180 @@ function createBoard() {
   return board;
 }
 
-export const initialState: State = {
-  board: createBoard(),
-  tiles: {},
-  tilesByIds: [],
-  hasChanged: false,
-  score: 0,
-  status: "ongoing",
+export function createInitialState(): State {
+  return {
+    board: createBoard(),
+    tiles: {},
+    tilesByIds: [],
+    hasChanged: false,
+    score: 0,
+    status: "ongoing",
+  };
+}
+
+export const initialState: State = createInitialState();
+
+const getMovementRuleLimit = (rules?: MovementRules) => {
+  if (typeof rules?.maxMergesPerMove !== "number") {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  return Math.max(0, Math.floor(rules.maxMergesPerMove));
+};
+
+const canMergeTiles = (previousTile?: Tile, currentTile?: Tile) => {
+  if (!previousTile || !currentTile) {
+    return false;
+  }
+
+  if (isObstacleTile(previousTile) || isObstacleTile(currentTile)) {
+    return false;
+  }
+
+  return previousTile.value === currentTile.value;
+};
+
+const buildLineCoordinates = (direction: MoveDirection, index: number) => {
+  const line: [number, number][] = [];
+
+  for (let offset = 0; offset < tileCountPerDimension; offset += 1) {
+    if (direction === "move_left") {
+      line.push([offset, index]);
+    }
+
+    if (direction === "move_right") {
+      line.push([tileCountPerDimension - 1 - offset, index]);
+    }
+
+    if (direction === "move_up") {
+      line.push([index, offset]);
+    }
+
+    if (direction === "move_down") {
+      line.push([index, tileCountPerDimension - 1 - offset]);
+    }
+  }
+
+  return line;
+};
+
+const move = (state: State, direction: MoveDirection, rules?: MovementRules) => {
+  const newBoard = createBoard();
+  const newTiles: TileMap = {};
+  let hasChanged = false;
+  let score = state.score;
+  let mergesUsed = 0;
+  const mergeLimit = getMovementRuleLimit(rules);
+
+  for (let index = 0; index < tileCountPerDimension; index += 1) {
+    const line = buildLineCoordinates(direction, index);
+    const obstacleIndexes = new Set<number>();
+
+    line.forEach(([x, y], lineIndex) => {
+      const tileId = state.board[y][x];
+
+      if (typeof tileId !== "string") {
+        return;
+      }
+
+      const tile = normalizeTile(state.tiles[tileId]);
+
+      if (!isObstacleTile(tile)) {
+        return;
+      }
+
+      obstacleIndexes.add(lineIndex);
+      newBoard[y][x] = tileId;
+      newTiles[tileId] = {
+        ...tile,
+        position: [x, y],
+      };
+    });
+
+    let segmentStart = 0;
+
+    while (segmentStart < line.length) {
+      while (segmentStart < line.length && obstacleIndexes.has(segmentStart)) {
+        segmentStart += 1;
+      }
+
+      if (segmentStart >= line.length) {
+        break;
+      }
+
+      let segmentEnd = segmentStart;
+      while (segmentEnd < line.length && !obstacleIndexes.has(segmentEnd)) {
+        segmentEnd += 1;
+      }
+
+      const segment = line.slice(segmentStart, segmentEnd);
+      const placedTileIds: string[] = [];
+
+      segment.forEach(([x, y]) => {
+        const tileId = state.board[y][x];
+
+        if (typeof tileId !== "string") {
+          return;
+        }
+
+        const currentTile = normalizeTile(state.tiles[tileId]);
+
+        if (isObstacleTile(currentTile)) {
+          return;
+        }
+
+        const previousPlacedTileId = placedTileIds[placedTileIds.length - 1];
+        const previousPlacedTile =
+          typeof previousPlacedTileId === "string"
+            ? newTiles[previousPlacedTileId]
+            : undefined;
+
+        if (
+          typeof previousPlacedTileId === "string" &&
+          previousPlacedTile &&
+          canMergeTiles(previousPlacedTile, currentTile) &&
+          mergesUsed < mergeLimit
+        ) {
+          score += previousPlacedTile.value * 2;
+          newTiles[previousPlacedTileId] = {
+            ...previousPlacedTile,
+            value: previousPlacedTile.value * 2,
+          };
+          newTiles[tileId] = {
+            ...currentTile,
+            position: previousPlacedTile.position,
+          };
+          hasChanged = true;
+          mergesUsed += 1;
+          return;
+        }
+
+        const nextPosition = segment[placedTileIds.length];
+        newBoard[nextPosition[1]][nextPosition[0]] = tileId;
+        newTiles[tileId] = {
+          ...currentTile,
+          position: nextPosition,
+        };
+
+        if (!isEqual(currentTile.position, nextPosition)) {
+          hasChanged = true;
+        }
+
+        placedTileIds.push(tileId);
+      });
+
+      segmentStart = segmentEnd + 1;
+    }
+  }
+
+  return {
+    ...state,
+    board: newBoard,
+    tiles: newTiles,
+    tilesByIds: state.tilesByIds.filter((tileId) => !isNil(newTiles[tileId])),
+    hasChanged,
+    score,
+  };
 };
 
 export default function gameReducer(
@@ -49,9 +218,9 @@ export default function gameReducer(
   switch (action.type) {
     case "clean_up": {
       const flattenBoard = flattenDeep(state.board);
-      const newTiles: TileMap = flattenBoard.reduce(
-        (result, tileId: string) => {
-          if (isNil(tileId)) {
+      const newTiles = flattenBoard.reduce<TileMap>(
+        (result: TileMap, tileId: string | undefined) => {
+          if (typeof tileId !== "string") {
             return result;
           }
 
@@ -73,7 +242,7 @@ export default function gameReducer(
     case "create_tile": {
       const tileId = uid();
       const [x, y] = action.tile.position;
-      const newBoard = JSON.parse(JSON.stringify(state.board));
+      const newBoard = state.board.map((row) => [...row]);
       newBoard[y][x] = tileId;
 
       return {
@@ -81,220 +250,21 @@ export default function gameReducer(
         board: newBoard,
         tiles: {
           ...state.tiles,
-          [tileId]: {
+          [tileId]: normalizeTile({
             id: tileId,
             ...action.tile,
-          },
+          }),
         },
         tilesByIds: [...state.tilesByIds, tileId],
       };
     }
-    case "move_up": {
-      const newBoard = createBoard();
-      const newTiles: TileMap = {};
-      let hasChanged = false;
-      let { score } = state;
-
-      for (let x = 0; x < tileCountPerDimension; x++) {
-        let newY = 0;
-        let previousTile: Tile | undefined;
-
-        for (let y = 0; y < tileCountPerDimension; y++) {
-          const tileId = state.board[y][x];
-          const currentTile = state.tiles[tileId];
-
-          if (!isNil(tileId)) {
-            if (previousTile?.value === currentTile.value) {
-              score += previousTile.value * 2;
-              newTiles[previousTile.id as string] = {
-                ...previousTile,
-                value: previousTile.value * 2,
-              };
-              newTiles[tileId] = {
-                ...currentTile,
-                position: [x, newY - 1],
-              };
-              previousTile = undefined;
-              hasChanged = true;
-              continue;
-            }
-
-            newBoard[newY][x] = tileId;
-            newTiles[tileId] = {
-              ...currentTile,
-              position: [x, newY],
-            };
-            previousTile = newTiles[tileId];
-            if (!isEqual(currentTile.position, [x, newY])) {
-              hasChanged = true;
-            }
-            newY++;
-          }
-        }
-      }
-      return {
-        ...state,
-        board: newBoard,
-        tiles: newTiles,
-        hasChanged,
-        score,
-      };
-    }
-    case "move_down": {
-      const newBoard = createBoard();
-      const newTiles: TileMap = {};
-      let hasChanged = false;
-      let { score } = state;
-
-      for (let x = 0; x < tileCountPerDimension; x++) {
-        let newY = tileCountPerDimension - 1;
-        let previousTile: Tile | undefined;
-
-        for (let y = tileCountPerDimension - 1; y >= 0; y--) {
-          const tileId = state.board[y][x];
-          const currentTile = state.tiles[tileId];
-
-          if (!isNil(tileId)) {
-            if (previousTile?.value === currentTile.value) {
-              score += previousTile.value * 2;
-              newTiles[previousTile.id as string] = {
-                ...previousTile,
-                value: previousTile.value * 2,
-              };
-              newTiles[tileId] = {
-                ...currentTile,
-                position: [x, newY + 1],
-              };
-              previousTile = undefined;
-              hasChanged = true;
-              continue;
-            }
-
-            newBoard[newY][x] = tileId;
-            newTiles[tileId] = {
-              ...currentTile,
-              position: [x, newY],
-            };
-            previousTile = newTiles[tileId];
-            if (!isEqual(currentTile.position, [x, newY])) {
-              hasChanged = true;
-            }
-            newY--;
-          }
-        }
-      }
-      return {
-        ...state,
-        board: newBoard,
-        tiles: newTiles,
-        hasChanged,
-        score,
-      };
-    }
-    case "move_left": {
-      const newBoard = createBoard();
-      const newTiles: TileMap = {};
-      let hasChanged = false;
-      let { score } = state;
-
-      for (let y = 0; y < tileCountPerDimension; y++) {
-        let newX = 0;
-        let previousTile: Tile | undefined;
-
-        for (let x = 0; x < tileCountPerDimension; x++) {
-          const tileId = state.board[y][x];
-          const currentTile = state.tiles[tileId];
-
-          if (!isNil(tileId)) {
-            if (previousTile?.value === currentTile.value) {
-              score += previousTile.value * 2;
-              newTiles[previousTile.id as string] = {
-                ...previousTile,
-                value: previousTile.value * 2,
-              };
-              newTiles[tileId] = {
-                ...currentTile,
-                position: [newX - 1, y],
-              };
-              previousTile = undefined;
-              hasChanged = true;
-              continue;
-            }
-
-            newBoard[y][newX] = tileId;
-            newTiles[tileId] = {
-              ...currentTile,
-              position: [newX, y],
-            };
-            previousTile = newTiles[tileId];
-            if (!isEqual(currentTile.position, [newX, y])) {
-              hasChanged = true;
-            }
-            newX++;
-          }
-        }
-      }
-      return {
-        ...state,
-        board: newBoard,
-        tiles: newTiles,
-        hasChanged,
-        score,
-      };
-    }
-    case "move_right": {
-      const newBoard = createBoard();
-      const newTiles: TileMap = {};
-      let hasChanged = false;
-      let { score } = state;
-
-      for (let y = 0; y < tileCountPerDimension; y++) {
-        let newX = tileCountPerDimension - 1;
-        let previousTile: Tile | undefined;
-
-        for (let x = tileCountPerDimension - 1; x >= 0; x--) {
-          const tileId = state.board[y][x];
-          const currentTile = state.tiles[tileId];
-
-          if (!isNil(tileId)) {
-            if (previousTile?.value === currentTile.value) {
-              score += previousTile.value * 2;
-              newTiles[previousTile.id as string] = {
-                ...previousTile,
-                value: previousTile.value * 2,
-              };
-              newTiles[tileId] = {
-                ...currentTile,
-                position: [newX + 1, y],
-              };
-              previousTile = undefined;
-              hasChanged = true;
-              continue;
-            }
-
-            newBoard[y][newX] = tileId;
-            newTiles[tileId] = {
-              ...state.tiles[tileId],
-              position: [newX, y],
-            };
-            previousTile = newTiles[tileId];
-            if (!isEqual(currentTile.position, [newX, y])) {
-              hasChanged = true;
-            }
-            newX--;
-          }
-        }
-      }
-      return {
-        ...state,
-        board: newBoard,
-        tiles: newTiles,
-        hasChanged,
-        score,
-      };
-    }
+    case "move_up":
+    case "move_down":
+    case "move_left":
+    case "move_right":
+      return move(state, action.type, action.rules);
     case "reset_game":
-      return initialState;
+      return createInitialState();
     case "update_status":
       return {
         ...state,

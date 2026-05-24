@@ -1,0 +1,2278 @@
+diff --git a/components/board.tsx b/components/board.tsx
+index 57e2531..9b1c065 100644
+--- a/components/board.tsx
++++ b/components/board.tsx
+@@ -1,4 +1,5 @@
+-import { useCallback, useContext, useEffect, useRef } from "react";
++import { useCallback, useContext, useEffect } from "react";
++import { tileCountPerDimension } from "@/constants";
+ import { Tile as TileModel } from "@/models/tile";
+ import styles from "@/styles/board.module.css";
+ import Tile from "./tile";
+@@ -7,25 +8,25 @@ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
+ import Splash from "./splash";
+ 
+ export default function Board() {
+-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
+-  const initialized = useRef(false);
++  const { getTiles, getObstacles, moveTiles, status } = useContext(GameContext);
+ 
+   const handleKeyDown = useCallback(
+     (e: KeyboardEvent) => {
+-      // disables page scrolling with keyboard arrows
+-      e.preventDefault();
+-
+       switch (e.code) {
+         case "ArrowUp":
++          e.preventDefault();
+           moveTiles("move_up");
+           break;
+         case "ArrowDown":
++          e.preventDefault();
+           moveTiles("move_down");
+           break;
+         case "ArrowLeft":
++          e.preventDefault();
+           moveTiles("move_left");
+           break;
+         case "ArrowRight":
++          e.preventDefault();
+           moveTiles("move_right");
+           break;
+       }
+@@ -41,12 +42,10 @@ export default function Board() {
+         } else {
+           moveTiles("move_left");
+         }
++      } else if (deltaY > 0) {
++        moveTiles("move_down");
+       } else {
+-        if (deltaY > 0) {
+-          moveTiles("move_down");
+-        } else {
+-          moveTiles("move_up");
+-        }
++        moveTiles("move_up");
+       }
+     },
+     [moveTiles],
+@@ -54,28 +53,28 @@ export default function Board() {
+ 
+   const renderGrid = () => {
+     const cells: JSX.Element[] = [];
+-    const totalCellsCount = 16;
++    const obstaclePositions = new Set(
++      getObstacles().map((tile: TileModel) => `${tile.position[0]}:${tile.position[1]}`),
++    );
+ 
+-    for (let index = 0; index < totalCellsCount; index += 1) {
+-      cells.push(<div className={styles.cell} key={index} />);
++    for (let y = 0; y < tileCountPerDimension; y += 1) {
++      for (let x = 0; x < tileCountPerDimension; x += 1) {
++        const cellKey = `${x}:${y}`;
++        const cellClassName = obstaclePositions.has(cellKey)
++          ? `${styles.cell} ${styles.obstacleCell}`
++          : styles.cell;
++
++        cells.push(<div className={cellClassName} key={cellKey} />);
++      }
+     }
+ 
+     return cells;
+   };
+ 
+   const renderTiles = () => {
+-    return getTiles().map((tile: TileModel) => (
+-      <Tile key={`${tile.id}`} {...tile} />
+-    ));
++    return getTiles().map((tile: TileModel) => <Tile key={`${tile.id}`} {...tile} />);
+   };
+ 
+-  useEffect(() => {
+-    if (initialized.current === false) {
+-      startGame();
+-      initialized.current = true;
+-    }
+-  }, [startGame]);
+-
+   useEffect(() => {
+     window.addEventListener("keydown", handleKeyDown);
+ 
+diff --git a/constants.ts b/constants.ts
+index 053a40f..4450887 100644
+--- a/constants.ts
++++ b/constants.ts
+@@ -1,20 +1,197 @@
+-/**
+- * Game Layout
+- */
+-export const containerWidthMobile = 288; // px
++export const containerWidthMobile = 288;
+ 
+-export const containerWidthDesktop = 464; // px
++export const containerWidthDesktop = 464;
+ 
+ export const tileCountPerDimension = 4;
+ 
+-/**
+- * Animations
+- */
+-export const mergeAnimationDuration = 100; // ms
++export const mergeAnimationDuration = 100;
+ 
+-export const moveAnimationDuration = 200; // ms
++export const moveAnimationDuration = 200;
+ 
+-/**
+- * Game setup
+- */
+ export const gameWinTileValue = 2048;
++
++export const gameStorageKey = "2048-in-react-session";
++
++export const moveDirections = [
++  "move_up",
++  "move_down",
++  "move_left",
++  "move_right",
++] as const;
++
++export type MoveDirection = (typeof moveDirections)[number];
++
++export const moveDirectionLabels: Record<MoveDirection, string> = {
++  move_up: "上",
++  move_down: "下",
++  move_left: "左",
++  move_right: "右",
++};
++
++export type ChallengeModeId =
++  | "obstacle"
++  | "decay"
++  | "mergeLimit"
++  | "countdown"
++  | "disabledDirection";
++
++export type ChallengeConfig = {
++  obstacle: {
++    spawnCount: number;
++    maxObstacles: number;
++  };
++  decay: {
++    step: number;
++    minimumValue: number;
++  };
++  mergeLimit: {
++    maxMergesPerMove: number;
++  };
++  countdown: {
++    durationMs: number;
++    bonusMsPerMove: number;
++  };
++  disabledDirection: {
++    disabledCount: number;
++  };
++};
++
++export type EnabledChallengeModes = Record<ChallengeModeId, boolean>;
++
++export const challengeModeOrder: ChallengeModeId[] = [
++  "obstacle",
++  "decay",
++  "mergeLimit",
++  "countdown",
++  "disabledDirection",
++];
++
++export const defaultChallengeConfig: ChallengeConfig = {
++  obstacle: {
++    spawnCount: 1,
++    maxObstacles: 3,
++  },
++  decay: {
++    step: 1,
++    minimumValue: 2,
++  },
++  mergeLimit: {
++    maxMergesPerMove: 1,
++  },
++  countdown: {
++    durationMs: 45000,
++    bonusMsPerMove: 0,
++  },
++  disabledDirection: {
++    disabledCount: 1,
++  },
++};
++
++export const createEmptyEnabledModes = (): EnabledChallengeModes => ({
++  obstacle: false,
++  decay: false,
++  mergeLimit: false,
++  countdown: false,
++  disabledDirection: false,
++});
++
++export const challengeModeDefinitions = {
++  obstacle: {
++    label: "自动障碍",
++    description: "每回合在空位生成障碍，障碍会阻挡移动与合并。",
++    controls: [
++      {
++        key: "spawnCount",
++        label: "每回合障碍",
++        min: 1,
++        max: 2,
++        step: 1,
++      },
++      {
++        key: "maxObstacles",
++        label: "障碍上限",
++        min: 1,
++        max: 6,
++        step: 1,
++      },
++    ],
++  },
++  decay: {
++    label: "数字衰减",
++    description: "每次有效移动后，数字按衰减级数自动减半。",
++    controls: [
++      {
++        key: "step",
++        label: "衰减级数",
++        min: 1,
++        max: 3,
++        step: 1,
++      },
++      {
++        key: "minimumValue",
++        label: "最小值",
++        min: 2,
++        max: 32,
++        step: 2,
++      },
++    ],
++  },
++  mergeLimit: {
++    label: "合并限制",
++    description: "限制每次移动最多允许的合并次数。",
++    controls: [
++      {
++        key: "maxMergesPerMove",
++        label: "每步最多合并",
++        min: 0,
++        max: 4,
++        step: 1,
++      },
++    ],
++  },
++  countdown: {
++    label: "倒计时",
++    description: "时间耗尽即失败，可按配置在每次有效移动后回补时间。",
++    controls: [
++      {
++        key: "durationMs",
++        label: "初始毫秒",
++        min: 5000,
++        max: 120000,
++        step: 5000,
++      },
++      {
++        key: "bonusMsPerMove",
++        label: "每步回补",
++        min: 0,
++        max: 10000,
++        step: 500,
++      },
++    ],
++  },
++  disabledDirection: {
++    label: "禁用方向",
++    description: "每回合随机禁用部分方向，已禁用方向输入会被直接忽略。",
++    controls: [
++      {
++        key: "disabledCount",
++        label: "禁用数量",
++        min: 1,
++        max: 3,
++        step: 1,
++      },
++    ],
++  },
++} satisfies {
++  [K in ChallengeModeId]: {
++    label: string;
++    description: string;
++    controls: Array<{
++      key: keyof ChallengeConfig[K] & string;
++      label: string;
++      min: number;
++      max: number;
++      step: number;
++    }>;
++  };
++};
+diff --git a/context/game-context.tsx b/context/game-context.tsx
+index 0b93edc..177da58 100644
+--- a/context/game-context.tsx
++++ b/context/game-context.tsx
+@@ -3,133 +3,1057 @@ import {
+   createContext,
+   useCallback,
+   useEffect,
+-  useReducer,
++  useMemo,
++  useRef,
++  useState,
+ } from "react";
+-import { isNil, throttle } from "lodash";
++import { cloneDeep, isNil, throttle } from "lodash";
+ import {
++  ChallengeConfig,
++  ChallengeModeId,
++  EnabledChallengeModes,
++  MoveDirection,
++  createEmptyEnabledModes,
++  defaultChallengeConfig,
++  gameStorageKey,
+   gameWinTileValue,
+   mergeAnimationDuration,
++  moveDirections,
+   tileCountPerDimension,
+ } from "@/constants";
+-import { Tile } from "@/models/tile";
+-import gameReducer, { initialState } from "@/reducers/game-reducer";
++import { Tile, TileMap, isObstacleTile, normalizeTile } from "@/models/tile";
++import gameReducer, {
++  GameStatus,
++  MovementRules,
++  State as GameState,
++  createBoard,
++  createInitialState,
++} from "@/reducers/game-reducer";
+ 
+-type MoveDirection = "move_up" | "move_down" | "move_left" | "move_right";
++type ChallengeRuntimeState = {
++  timeRemainingMs: number | null;
++  disabledDirections: MoveDirection[];
++  obstacleQueue: string[];
++};
+ 
+-export const GameContext = createContext({
+-  score: 0,
+-  status: "ongoing",
+-  moveTiles: (_: MoveDirection) => {},
+-  getTiles: () => [] as Tile[],
+-  startGame: () => {},
++type GameSnapshot = {
++  gameState: GameState;
++  enabledModes: EnabledChallengeModes;
++  challengeConfig: ChallengeConfig;
++  challengeRuntime: ChallengeRuntimeState;
++};
++
++type GameSession = GameSnapshot & {
++  history: GameSnapshot[];
++};
++
++type BeforeMoveResult = {
++  snapshot: GameSnapshot;
++  cancel?: boolean;
++};
++
++type ChallengePlugin = {
++  id: ChallengeModeId;
++  initialize?: (snapshot: GameSnapshot) => GameSnapshot;
++  beforeMove?: (
++    snapshot: GameSnapshot,
++    direction: MoveDirection,
++  ) => BeforeMoveResult;
++  getMovementRules?: (snapshot: GameSnapshot) => Partial<MovementRules>;
++  beforeSpawn?: (snapshot: GameSnapshot) => GameSnapshot;
++  afterSpawn?: (snapshot: GameSnapshot) => GameSnapshot;
++  onTick?: (snapshot: GameSnapshot, elapsedMs: number) => GameSnapshot;
++  isGameOver?: (snapshot: GameSnapshot) => boolean;
++};
++
++type PersistedSession = {
++  version: 2;
++  snapshot: GameSnapshot;
++  history: GameSnapshot[];
++};
++
++type GameContextValue = {
++  score: number;
++  status: GameStatus;
++  moveTiles: (direction: MoveDirection) => void;
++  getTiles: () => Tile[];
++  getObstacles: () => Tile[];
++  startGame: () => void;
++  replayGame: () => void;
++  undoMove: () => void;
++  canUndo: boolean;
++  enabledModes: EnabledChallengeModes;
++  challengeConfig: ChallengeConfig;
++  disabledDirections: MoveDirection[];
++  timeRemainingMs: number | null;
++  setChallengeModeEnabled: (modeId: ChallengeModeId, enabled: boolean) => void;
++  updateChallengeModeConfig: (
++    modeId: ChallengeModeId,
++    field: string,
++    value: number,
++  ) => void;
++};
++
++const createDefaultRuntime = (): ChallengeRuntimeState => ({
++  timeRemainingMs: null,
++  disabledDirections: [],
++  obstacleQueue: [],
+ });
+ 
+-export default function GameProvider({ children }: PropsWithChildren) {
+-  const [gameState, dispatch] = useReducer(gameReducer, initialState);
++const cloneSnapshot = (snapshot: GameSnapshot): GameSnapshot => cloneDeep(snapshot);
+ 
+-  const getEmptyCells = () => {
+-    const results: [number, number][] = [];
++const createSnapshotFromSession = (session: GameSession): GameSnapshot =>
++  cloneSnapshot({
++    gameState: session.gameState,
++    enabledModes: session.enabledModes,
++    challengeConfig: session.challengeConfig,
++    challengeRuntime: session.challengeRuntime,
++  });
+ 
+-    for (let x = 0; x < tileCountPerDimension; x++) {
+-      for (let y = 0; y < tileCountPerDimension; y++) {
+-        if (isNil(gameState.board[y][x])) {
+-          results.push([x, y]);
+-        }
++const createSessionFromSnapshot = (
++  snapshot: GameSnapshot,
++  history: GameSnapshot[] = [],
++): GameSession => ({
++  ...cloneSnapshot(snapshot),
++  history: history.map((entry) => cloneSnapshot(entry)),
++});
++
++const clampNumber = (
++  value: unknown,
++  fallback: number,
++  minimum: number,
++  maximum: number,
++) => {
++  if (typeof value !== "number" || Number.isNaN(value)) {
++    return fallback;
++  }
++
++  return Math.min(maximum, Math.max(minimum, Math.floor(value)));
++};
++
++const randomizeDirections = (disabledCount: number) => {
++  const pool = [...moveDirections];
++  const results: MoveDirection[] = [];
++  const safeDisabledCount = Math.min(
++    Math.max(disabledCount, 0),
++    moveDirections.length - 1,
++  );
++
++  for (let index = 0; index < safeDisabledCount; index += 1) {
++    const itemIndex = Math.floor(Math.random() * pool.length);
++    results.push(pool[itemIndex]);
++    pool.splice(itemIndex, 1);
++  }
++
++  return results;
++};
++
++const getEmptyCells = (gameState: GameState) => {
++  const results: [number, number][] = [];
++
++  for (let x = 0; x < tileCountPerDimension; x += 1) {
++    for (let y = 0; y < tileCountPerDimension; y += 1) {
++      if (isNil(gameState.board[y][x])) {
++        results.push([x, y]);
+       }
+     }
+-    return results;
++  }
++
++  return results;
++};
++
++const createTile = (gameState: GameState, tile: Tile) => {
++  const nextGameState = gameReducer(gameState, { type: "create_tile", tile });
++  const createdTileId = nextGameState.tilesByIds[nextGameState.tilesByIds.length - 1];
++
++  return {
++    nextGameState,
++    createdTileId,
++  };
++};
++
++const appendRandomValueTile = (snapshot: GameSnapshot) => {
++  const emptyCells = getEmptyCells(snapshot.gameState);
++
++  if (emptyCells.length === 0) {
++    return snapshot;
++  }
++
++  const cellIndex = Math.floor(Math.random() * emptyCells.length);
++  const { nextGameState } = createTile(snapshot.gameState, {
++    position: emptyCells[cellIndex],
++    value: 2,
++    kind: "value",
++  });
++
++  return {
++    ...snapshot,
++    gameState: nextGameState,
+   };
++};
++
++const removeTiles = (gameState: GameState, tileIds: string[]) => {
++  const removedTileIds = new Set(tileIds);
++  const board = gameState.board.map((row) =>
++    row.map((tileId) =>
++      typeof tileId === "string" && removedTileIds.has(tileId) ? undefined : tileId,
++    ),
++  );
++  const tiles = Object.entries(gameState.tiles).reduce<TileMap>(
++    (result, [tileId, tile]) => {
++      if (removedTileIds.has(tileId)) {
++        return result;
++      }
+ 
+-  const appendRandomTile = () => {
+-    const emptyCells = getEmptyCells();
+-    if (emptyCells.length > 0) {
+-      const cellIndex = Math.floor(Math.random() * emptyCells.length);
+-      const newTile = {
+-        position: emptyCells[cellIndex],
+-        value: 2,
++      return {
++        ...result,
++        [tileId]: tile,
+       };
+-      dispatch({ type: "create_tile", tile: newTile });
+-    }
++    },
++    {},
++  );
++
++  return {
++    ...gameState,
++    board,
++    tiles,
++    tilesByIds: gameState.tilesByIds.filter((tileId) => !removedTileIds.has(tileId)),
++    hasChanged: false,
+   };
++};
+ 
+-  const getTiles = () => {
+-    return gameState.tilesByIds.map((tileId) => gameState.tiles[tileId]);
++const patchTiles = (
++  gameState: GameState,
++  updater: (tile: Tile) => Tile,
++): GameState => {
++  const tiles = Object.entries(gameState.tiles).reduce<TileMap>((result, [tileId, tile]) => {
++    return {
++      ...result,
++      [tileId]: updater(tile),
++    };
++  }, {});
++
++  return {
++    ...gameState,
++    tiles,
++    hasChanged: false,
+   };
++};
+ 
+-  const moveTiles = useCallback(
+-    throttle(
+-      (type: MoveDirection) => dispatch({ type }),
+-      mergeAnimationDuration * 1.05,
+-      { trailing: false },
+-    ),
+-    [dispatch],
++const hasWinningTile = (gameState: GameState) => {
++  return (
++    Object.values(gameState.tiles).filter(
++      (tile) => !isObstacleTile(tile) && tile.value === gameWinTileValue,
++    ).length > 0
++  );
++};
++
++const getActivePlugins = (snapshot: GameSnapshot) => {
++  return challengePlugins.filter((plugin) => snapshot.enabledModes[plugin.id]);
++};
++
++const buildMovementRules = (snapshot: GameSnapshot): MovementRules => {
++  return getActivePlugins(snapshot).reduce<MovementRules>((result, plugin) => {
++    const partialRules = plugin.getMovementRules?.(snapshot);
++
++    if (typeof partialRules?.maxMergesPerMove === "number") {
++      return {
++        ...result,
++        maxMergesPerMove:
++          typeof result.maxMergesPerMove === "number"
++            ? Math.min(result.maxMergesPerMove, partialRules.maxMergesPerMove)
++            : partialRules.maxMergesPerMove,
++      };
++    }
++
++    return result;
++  }, {});
++};
++
++const hasAvailableMoves = (snapshot: GameSnapshot) => {
++  const availableDirections = moveDirections.filter(
++    (direction) => !snapshot.challengeRuntime.disabledDirections.includes(direction),
++  );
++
++  if (availableDirections.length === 0) {
++    return false;
++  }
++
++  const movementRules = buildMovementRules(snapshot);
++
++  return availableDirections.some((direction) => {
++    const nextState = gameReducer(snapshot.gameState, {
++      type: direction,
++      rules: movementRules,
++    });
++
++    return nextState.hasChanged;
++  });
++};
++
++const syncGameStatus = (snapshot: GameSnapshot) => {
++  let nextStatus: GameStatus = "ongoing";
++
++  if (hasWinningTile(snapshot.gameState)) {
++    nextStatus = "won";
++  } else if (
++    getActivePlugins(snapshot).some((plugin) => plugin.isGameOver?.(snapshot)) ||
++    !hasAvailableMoves(snapshot)
++  ) {
++    nextStatus = "lost";
++  }
++
++  return {
++    ...snapshot,
++    gameState: gameReducer(snapshot.gameState, {
++      type: "update_status",
++      status: nextStatus,
++    }),
++  };
++};
++
++const applyInitialization = (snapshot: GameSnapshot) => {
++  const initializedSnapshot = getActivePlugins(snapshot).reduce(
++    (currentSnapshot, plugin) => plugin.initialize?.(currentSnapshot) ?? currentSnapshot,
++    snapshot,
+   );
+ 
+-  const startGame = () => {
+-    dispatch({ type: "reset_game" });
+-    dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
+-    dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
++  return syncGameStatus(initializedSnapshot);
++};
++
++const applyBeforeMove = (snapshot: GameSnapshot, direction: MoveDirection) => {
++  return getActivePlugins(snapshot).reduce<BeforeMoveResult>(
++    (result, plugin) => {
++      if (result.cancel) {
++        return result;
++      }
++
++      return plugin.beforeMove?.(result.snapshot, direction) ?? result;
++    },
++    {
++      snapshot,
++      cancel: false,
++    },
++  );
++};
++
++const applyBeforeSpawn = (snapshot: GameSnapshot) => {
++  return getActivePlugins(snapshot).reduce(
++    (currentSnapshot, plugin) => plugin.beforeSpawn?.(currentSnapshot) ?? currentSnapshot,
++    snapshot,
++  );
++};
++
++const applyAfterSpawn = (snapshot: GameSnapshot) => {
++  return getActivePlugins(snapshot).reduce(
++    (currentSnapshot, plugin) => plugin.afterSpawn?.(currentSnapshot) ?? currentSnapshot,
++    snapshot,
++  );
++};
++
++const applyTick = (snapshot: GameSnapshot, elapsedMs: number) => {
++  const updatedSnapshot = getActivePlugins(snapshot).reduce(
++    (currentSnapshot, plugin) =>
++      plugin.onTick?.(currentSnapshot, elapsedMs) ?? currentSnapshot,
++    snapshot,
++  );
++
++  return syncGameStatus(updatedSnapshot);
++};
++
++const sanitizeEnabledModes = (raw: unknown): EnabledChallengeModes => {
++  const nextModes = createEmptyEnabledModes();
++
++  if (typeof raw !== "object" || isNil(raw)) {
++    return nextModes;
++  }
++
++  const source = raw as Partial<EnabledChallengeModes>;
++
++  Object.keys(nextModes).forEach((key) => {
++    const modeId = key as ChallengeModeId;
++    nextModes[modeId] = Boolean(source[modeId]);
++  });
++
++  return nextModes;
++};
++
++const sanitizeChallengeConfig = (raw: unknown): ChallengeConfig => {
++  const source = typeof raw === "object" && !isNil(raw) ? raw : {};
++  const castSource = source as Partial<ChallengeConfig>;
++
++  return {
++    obstacle: {
++      spawnCount: clampNumber(
++        castSource.obstacle?.spawnCount,
++        defaultChallengeConfig.obstacle.spawnCount,
++        1,
++        2,
++      ),
++      maxObstacles: clampNumber(
++        castSource.obstacle?.maxObstacles,
++        defaultChallengeConfig.obstacle.maxObstacles,
++        1,
++        6,
++      ),
++    },
++    decay: {
++      step: clampNumber(castSource.decay?.step, defaultChallengeConfig.decay.step, 1, 3),
++      minimumValue: clampNumber(
++        castSource.decay?.minimumValue,
++        defaultChallengeConfig.decay.minimumValue,
++        2,
++        32,
++      ),
++    },
++    mergeLimit: {
++      maxMergesPerMove: clampNumber(
++        castSource.mergeLimit?.maxMergesPerMove,
++        defaultChallengeConfig.mergeLimit.maxMergesPerMove,
++        0,
++        4,
++      ),
++    },
++    countdown: {
++      durationMs: clampNumber(
++        castSource.countdown?.durationMs,
++        defaultChallengeConfig.countdown.durationMs,
++        5000,
++        120000,
++      ),
++      bonusMsPerMove: clampNumber(
++        castSource.countdown?.bonusMsPerMove,
++        defaultChallengeConfig.countdown.bonusMsPerMove,
++        0,
++        10000,
++      ),
++    },
++    disabledDirection: {
++      disabledCount: clampNumber(
++        castSource.disabledDirection?.disabledCount,
++        defaultChallengeConfig.disabledDirection.disabledCount,
++        1,
++        3,
++      ),
++    },
+   };
++};
+ 
+-  const checkGameState = () => {
+-    const isWon =
+-      Object.values(gameState.tiles).filter((t) => t.value === gameWinTileValue)
+-        .length > 0;
++const sanitizeTile = (rawTile: unknown, position: [number, number]) => {
++  if (typeof rawTile !== "object" || isNil(rawTile)) {
++    return null;
++  }
+ 
+-    if (isWon) {
+-      dispatch({ type: "update_status", status: "won" });
+-      return;
++  const tile = rawTile as Tile;
++
++  if (typeof tile.value !== "number" || Number.isNaN(tile.value)) {
++    return null;
++  }
++
++  return normalizeTile({
++    ...tile,
++    position,
++    value: Math.max(0, Math.floor(tile.value)),
++  });
++};
++
++const sanitizeGameState = (raw: unknown): GameState => {
++  if (typeof raw !== "object" || isNil(raw)) {
++    return createInitialState();
++  }
++
++  const source = raw as Partial<GameState>;
++  const tilesSource =
++    typeof source.tiles === "object" && !isNil(source.tiles) ? source.tiles : {};
++  const board = createBoard();
++  const tiles: TileMap = {};
++
++  for (let y = 0; y < tileCountPerDimension; y += 1) {
++    for (let x = 0; x < tileCountPerDimension; x += 1) {
++      const rawTileId = source.board?.[y]?.[x];
++
++      if (typeof rawTileId !== "string") {
++        continue;
++      }
++
++      const tile = sanitizeTile((tilesSource as TileMap)[rawTileId], [x, y]);
++
++      if (isNil(tile)) {
++        continue;
++      }
++
++      board[y][x] = rawTileId;
++      tiles[rawTileId] = tile;
+     }
++  }
+ 
+-    const { tiles, board } = gameState;
++  const status: GameStatus =
++    source.status === "won" || source.status === "lost" ? source.status : "ongoing";
+ 
+-    const maxIndex = tileCountPerDimension - 1;
+-    for (let x = 0; x < maxIndex; x += 1) {
+-      for (let y = 0; y < maxIndex; y += 1) {
+-        if (
+-          isNil(gameState.board[x][y]) ||
+-          isNil(gameState.board[x + 1][y]) ||
+-          isNil(gameState.board[x][y + 1])
+-        ) {
+-          return;
+-        }
++  return {
++    board,
++    tiles,
++    tilesByIds: Object.keys(tiles),
++    hasChanged: false,
++    score:
++      typeof source.score === "number" && !Number.isNaN(source.score)
++        ? Math.max(0, Math.floor(source.score))
++        : 0,
++    status,
++  };
++};
++
++const sanitizeRuntime = (raw: unknown, gameState: GameState): ChallengeRuntimeState => {
++  const runtime = createDefaultRuntime();
++
++  if (typeof raw !== "object" || isNil(raw)) {
++    return runtime;
++  }
++
++  const source = raw as Partial<ChallengeRuntimeState>;
+ 
+-        if (tiles[board[x][y]].value === tiles[board[x + 1][y]].value) {
+-          return;
++  runtime.timeRemainingMs =
++    typeof source.timeRemainingMs === "number" && !Number.isNaN(source.timeRemainingMs)
++      ? Math.max(0, Math.floor(source.timeRemainingMs))
++      : null;
++  runtime.disabledDirections = Array.isArray(source.disabledDirections)
++    ? source.disabledDirections.filter((direction): direction is MoveDirection =>
++        moveDirections.includes(direction as MoveDirection),
++      )
++    : [];
++  runtime.obstacleQueue = Array.isArray(source.obstacleQueue)
++    ? source.obstacleQueue.filter((tileId) => {
++        if (typeof tileId !== "string") {
++          return false;
+         }
+ 
+-        if (tiles[board[x][y]].value === tiles[board[x][y + 1]].value) {
+-          return;
++        return isObstacleTile(gameState.tiles[tileId]);
++      })
++    : [];
++
++  return runtime;
++};
++
++const buildStartedGameState = () => {
++  let gameState = createInitialState();
++  gameState = gameReducer(gameState, {
++    type: "create_tile",
++    tile: { position: [0, 1], value: 2, kind: "value" },
++  });
++  gameState = gameReducer(gameState, {
++    type: "create_tile",
++    tile: { position: [0, 2], value: 2, kind: "value" },
++  });
++
++  return gameState;
++};
++
++const buildFreshSnapshot = (
++  enabledModes = createEmptyEnabledModes(),
++  challengeConfig = cloneDeep(defaultChallengeConfig),
++) => {
++  return applyInitialization({
++    gameState: buildStartedGameState(),
++    enabledModes,
++    challengeConfig,
++    challengeRuntime: createDefaultRuntime(),
++  });
++};
++
++const buildFreshSession = (
++  enabledModes = createEmptyEnabledModes(),
++  challengeConfig = cloneDeep(defaultChallengeConfig),
++) => createSessionFromSnapshot(buildFreshSnapshot(enabledModes, challengeConfig));
++
++const sanitizeSnapshot = (raw: unknown) => {
++  const enabledModes = sanitizeEnabledModes((raw as Partial<GameSnapshot>)?.enabledModes);
++  const challengeConfig = sanitizeChallengeConfig(
++    (raw as Partial<GameSnapshot>)?.challengeConfig,
++  );
++  const gameState = sanitizeGameState((raw as Partial<GameSnapshot>)?.gameState ?? raw);
++  const challengeRuntime = sanitizeRuntime(
++    (raw as Partial<GameSnapshot>)?.challengeRuntime,
++    gameState,
++  );
++
++  return syncGameStatus({
++    gameState,
++    enabledModes,
++    challengeConfig,
++    challengeRuntime,
++  });
++};
++
++const sanitizeSession = (raw: unknown): GameSession => {
++  if (typeof raw !== "object" || isNil(raw)) {
++    return buildFreshSession();
++  }
++
++  const source = raw as Partial<PersistedSession>;
++
++  if (source.version === 2 && !isNil(source.snapshot)) {
++    const snapshot = sanitizeSnapshot(source.snapshot);
++    const history = Array.isArray(source.history)
++      ? source.history.map((entry) => sanitizeSnapshot(entry))
++      : [];
++
++    return createSessionFromSnapshot(snapshot, history);
++  }
++
++  return createSessionFromSnapshot(sanitizeSnapshot(source));
++};
++
++const loadStoredSession = () => {
++  if (typeof window === "undefined") {
++    return null;
++  }
++
++  try {
++    const rawValue = window.localStorage.getItem(gameStorageKey);
++
++    if (isNil(rawValue)) {
++      return null;
++    }
++
++    return sanitizeSession(JSON.parse(rawValue));
++  } catch {
++    return null;
++  }
++};
++
++const pushHistory = (history: GameSnapshot[], snapshot: GameSnapshot) => {
++  return [...history.slice(-19), cloneSnapshot(snapshot)];
++};
++
++const formatPersistedSession = (session: GameSession): PersistedSession => ({
++  version: 2,
++  snapshot: createSnapshotFromSession(session),
++  history: session.history.map((entry) => cloneSnapshot(entry)),
++});
++
++const obstaclePlugin: ChallengePlugin = {
++  id: "obstacle",
++  afterSpawn: (snapshot) => {
++    const queue = [...snapshot.challengeRuntime.obstacleQueue];
++    const maxObstacles = snapshot.challengeConfig.obstacle.maxObstacles;
++    let gameState = snapshot.gameState;
++
++    for (
++      let count = 0;
++      count < snapshot.challengeConfig.obstacle.spawnCount;
++      count += 1
++    ) {
++      if (queue.length >= maxObstacles) {
++        const tileIdToRemove = queue.shift();
++
++        if (typeof tileIdToRemove === "string") {
++          gameState = removeTiles(gameState, [tileIdToRemove]);
+         }
+       }
++
++      const emptyCells = getEmptyCells(gameState);
++
++      if (emptyCells.length === 0) {
++        break;
++      }
++
++      const randomIndex = Math.floor(Math.random() * emptyCells.length);
++      const { nextGameState, createdTileId } = createTile(gameState, {
++        position: emptyCells[randomIndex],
++        value: 0,
++        kind: "obstacle",
++      });
++
++      gameState = nextGameState;
++      queue.push(createdTileId);
+     }
+ 
+-    dispatch({ type: "update_status", status: "lost" });
+-  };
++    return {
++      ...snapshot,
++      gameState,
++      challengeRuntime: {
++        ...snapshot.challengeRuntime,
++        obstacleQueue: queue,
++      },
++    };
++  },
++};
++
++const decayPlugin: ChallengePlugin = {
++  id: "decay",
++  beforeSpawn: (snapshot) => {
++    const decayFactor = 2 ** snapshot.challengeConfig.decay.step;
++    const minimumValue = snapshot.challengeConfig.decay.minimumValue;
++
++    return {
++      ...snapshot,
++      gameState: patchTiles(snapshot.gameState, (tile) => {
++        if (isObstacleTile(tile)) {
++          return tile;
++        }
++
++        return {
++          ...tile,
++          value: Math.max(minimumValue, Math.floor(tile.value / decayFactor)),
++        };
++      }),
++    };
++  },
++};
++
++const mergeLimitPlugin: ChallengePlugin = {
++  id: "mergeLimit",
++  getMovementRules: (snapshot) => ({
++    maxMergesPerMove: snapshot.challengeConfig.mergeLimit.maxMergesPerMove,
++  }),
++};
++
++const countdownPlugin: ChallengePlugin = {
++  id: "countdown",
++  initialize: (snapshot) => ({
++    ...snapshot,
++    challengeRuntime: {
++      ...snapshot.challengeRuntime,
++      timeRemainingMs: snapshot.challengeConfig.countdown.durationMs,
++    },
++  }),
++  afterSpawn: (snapshot) => ({
++    ...snapshot,
++    challengeRuntime: {
++      ...snapshot.challengeRuntime,
++      timeRemainingMs: Math.max(
++        0,
++        (snapshot.challengeRuntime.timeRemainingMs ?? 0) +
++          snapshot.challengeConfig.countdown.bonusMsPerMove,
++      ),
++    },
++  }),
++  onTick: (snapshot, elapsedMs) => ({
++    ...snapshot,
++    challengeRuntime: {
++      ...snapshot.challengeRuntime,
++      timeRemainingMs: Math.max(
++        0,
++        (snapshot.challengeRuntime.timeRemainingMs ?? 0) - elapsedMs,
++      ),
++    },
++  }),
++  isGameOver: (snapshot) => (snapshot.challengeRuntime.timeRemainingMs ?? 1) <= 0,
++};
++
++const disabledDirectionPlugin: ChallengePlugin = {
++  id: "disabledDirection",
++  initialize: (snapshot) => ({
++    ...snapshot,
++    challengeRuntime: {
++      ...snapshot.challengeRuntime,
++      disabledDirections: randomizeDirections(
++        snapshot.challengeConfig.disabledDirection.disabledCount,
++      ),
++    },
++  }),
++  beforeMove: (snapshot, direction) => ({
++    snapshot,
++    cancel: snapshot.challengeRuntime.disabledDirections.includes(direction),
++  }),
++  afterSpawn: (snapshot) => ({
++    ...snapshot,
++    challengeRuntime: {
++      ...snapshot.challengeRuntime,
++      disabledDirections: randomizeDirections(
++        snapshot.challengeConfig.disabledDirection.disabledCount,
++      ),
++    },
++  }),
++};
++
++const challengePlugins: ChallengePlugin[] = [
++  obstaclePlugin,
++  decayPlugin,
++  mergeLimitPlugin,
++  countdownPlugin,
++  disabledDirectionPlugin,
++];
++
++const defaultContextValue: GameContextValue = {
++  score: 0,
++  status: "ongoing",
++  moveTiles: () => {},
++  getTiles: () => [],
++  getObstacles: () => [],
++  startGame: () => {},
++  replayGame: () => {},
++  undoMove: () => {},
++  canUndo: false,
++  enabledModes: createEmptyEnabledModes(),
++  challengeConfig: cloneDeep(defaultChallengeConfig),
++  disabledDirections: [],
++  timeRemainingMs: null,
++  setChallengeModeEnabled: () => {},
++  updateChallengeModeConfig: () => {},
++};
++
++export const GameContext = createContext<GameContextValue>(defaultContextValue);
++
++export default function GameProvider({ children }: PropsWithChildren) {
++  const [session, setSession] = useState<GameSession>(() => buildFreshSession());
++  const [storageReady, setStorageReady] = useState(false);
++  const lastTickTime = useRef(Date.now());
+ 
+   useEffect(() => {
+-    if (gameState.hasChanged) {
+-      setTimeout(() => {
+-        dispatch({ type: "clean_up" });
+-        appendRandomTile();
+-      }, mergeAnimationDuration);
++    const storedSession = loadStoredSession();
++
++    if (!isNil(storedSession)) {
++      setSession(storedSession);
+     }
+-  }, [gameState.hasChanged]);
++
++    setStorageReady(true);
++    lastTickTime.current = Date.now();
++  }, []);
+ 
+   useEffect(() => {
+-    if (!gameState.hasChanged) {
+-      checkGameState();
++    if (!storageReady || session.gameState.hasChanged) {
++      return;
++    }
++
++    if (typeof window === "undefined") {
++      return;
+     }
+-  }, [gameState.hasChanged]);
++
++    window.localStorage.setItem(
++      gameStorageKey,
++      JSON.stringify(formatPersistedSession(session)),
++    );
++  }, [session, storageReady]);
++
++  useEffect(() => {
++    if (!session.gameState.hasChanged) {
++      return;
++    }
++
++    const timeoutId = window.setTimeout(() => {
++      setSession((currentSession) => {
++        if (!currentSession.gameState.hasChanged) {
++          return currentSession;
++        }
++
++        let nextSnapshot: GameSnapshot = {
++          ...createSnapshotFromSession(currentSession),
++          gameState: gameReducer(currentSession.gameState, { type: "clean_up" }),
++        };
++
++        nextSnapshot = applyBeforeSpawn(nextSnapshot);
++        nextSnapshot = appendRandomValueTile(nextSnapshot);
++        nextSnapshot = applyAfterSpawn(nextSnapshot);
++        nextSnapshot = syncGameStatus(nextSnapshot);
++
++        return {
++          ...currentSession,
++          ...nextSnapshot,
++        };
++      });
++    }, mergeAnimationDuration);
++
++    return () => {
++      window.clearTimeout(timeoutId);
++    };
++  }, [session.gameState.hasChanged]);
++
++  useEffect(() => {
++    if (!session.enabledModes.countdown || session.gameState.status !== "ongoing") {
++      return;
++    }
++
++    lastTickTime.current = Date.now();
++
++    const intervalId = window.setInterval(() => {
++      const now = Date.now();
++      const elapsedMs = now - lastTickTime.current;
++      lastTickTime.current = now;
++
++      setSession((currentSession) => {
++        const currentSnapshot = createSnapshotFromSession(currentSession);
++
++        if (
++          !currentSnapshot.enabledModes.countdown ||
++          currentSnapshot.gameState.status !== "ongoing" ||
++          currentSnapshot.gameState.hasChanged
++        ) {
++          return currentSession;
++        }
++
++        const nextSnapshot = applyTick(currentSnapshot, elapsedMs);
++
++        return {
++          ...currentSession,
++          ...nextSnapshot,
++        };
++      });
++    }, 250);
++
++    return () => {
++      window.clearInterval(intervalId);
++    };
++  }, [session.enabledModes.countdown, session.gameState.status]);
++
++  const restartWithCurrentChallenge = useCallback(() => {
++    setSession((currentSession) =>
++      buildFreshSession(currentSession.enabledModes, currentSession.challengeConfig),
++    );
++    lastTickTime.current = Date.now();
++  }, []);
++
++  const undoMove = useCallback(() => {
++    setSession((currentSession) => {
++      if (currentSession.history.length === 0) {
++        return currentSession;
++      }
++
++      const previousSnapshot = currentSession.history[currentSession.history.length - 1];
++
++      return createSessionFromSnapshot(
++        previousSnapshot,
++        currentSession.history.slice(0, -1),
++      );
++    });
++    lastTickTime.current = Date.now();
++  }, []);
++
++  const setChallengeModeEnabled = useCallback(
++    (modeId: ChallengeModeId, enabled: boolean) => {
++      setSession((currentSession) => {
++        const nextModes = {
++          ...currentSession.enabledModes,
++          [modeId]: enabled,
++        };
++
++        return buildFreshSession(nextModes, currentSession.challengeConfig);
++      });
++      lastTickTime.current = Date.now();
++    },
++    [],
++  );
++
++  const updateChallengeModeConfig = useCallback(
++    (modeId: ChallengeModeId, field: string, value: number) => {
++      setSession((currentSession) => {
++        const nextConfig = sanitizeChallengeConfig({
++          ...currentSession.challengeConfig,
++          [modeId]: {
++            ...currentSession.challengeConfig[modeId],
++            [field]: value,
++          },
++        });
++
++        return buildFreshSession(currentSession.enabledModes, nextConfig);
++      });
++      lastTickTime.current = Date.now();
++    },
++    [],
++  );
++
++  const throttledMoveTiles = useMemo(
++    () =>
++      throttle(
++        (direction: MoveDirection) => {
++          setSession((currentSession) => {
++            if (
++              currentSession.gameState.status !== "ongoing" ||
++              currentSession.gameState.hasChanged
++            ) {
++              return currentSession;
++            }
++
++            const currentSnapshot = createSnapshotFromSession(currentSession);
++            const beforeMoveResult = applyBeforeMove(currentSnapshot, direction);
++
++            if (beforeMoveResult.cancel) {
++              const nextSnapshot = syncGameStatus(beforeMoveResult.snapshot);
++              return {
++                ...currentSession,
++                ...nextSnapshot,
++              };
++            }
++
++            const movementRules = buildMovementRules(beforeMoveResult.snapshot);
++            const nextGameState = gameReducer(beforeMoveResult.snapshot.gameState, {
++              type: direction,
++              rules: movementRules,
++            });
++
++            if (!nextGameState.hasChanged) {
++              const nextSnapshot = syncGameStatus({
++                ...beforeMoveResult.snapshot,
++                gameState: nextGameState,
++              });
++
++              return {
++                ...currentSession,
++                ...nextSnapshot,
++              };
++            }
++
++            return {
++              ...currentSession,
++              ...beforeMoveResult.snapshot,
++              gameState: nextGameState,
++              history: pushHistory(currentSession.history, currentSnapshot),
++            };
++          });
++        },
++        mergeAnimationDuration * 1.05,
++        { trailing: false },
++      ),
++    [],
++  );
++
++  useEffect(() => {
++    return () => {
++      throttledMoveTiles.cancel();
++    };
++  }, [throttledMoveTiles]);
++
++  const getTiles = useCallback(() => {
++    return session.gameState.tilesByIds
++      .map((tileId) => session.gameState.tiles[tileId])
++      .filter((tile): tile is Tile => !isNil(tile))
++      .map((tile) => normalizeTile(tile))
++      .filter((tile) => !isObstacleTile(tile));
++  }, [session.gameState.tiles, session.gameState.tilesByIds]);
++
++  const getObstacles = useCallback(() => {
++    return session.gameState.tilesByIds
++      .map((tileId) => session.gameState.tiles[tileId])
++      .filter((tile): tile is Tile => !isNil(tile))
++      .map((tile) => normalizeTile(tile))
++      .filter((tile) => isObstacleTile(tile));
++  }, [session.gameState.tiles, session.gameState.tilesByIds]);
++
++  const moveTiles = useCallback(
++    (direction: MoveDirection) => {
++      throttledMoveTiles(direction);
++    },
++    [throttledMoveTiles],
++  );
+ 
+   return (
+     <GameContext.Provider
+       value={{
+-        score: gameState.score,
+-        status: gameState.status,
+-        getTiles,
++        score: session.gameState.score,
++        status: session.gameState.status,
+         moveTiles,
+-        startGame,
++        getTiles,
++        getObstacles,
++        startGame: restartWithCurrentChallenge,
++        replayGame: restartWithCurrentChallenge,
++        undoMove,
++        canUndo: session.history.length > 0 && !session.gameState.hasChanged,
++        enabledModes: session.enabledModes,
++        challengeConfig: session.challengeConfig,
++        disabledDirections: session.challengeRuntime.disabledDirections,
++        timeRemainingMs: session.challengeRuntime.timeRemainingMs,
++        setChallengeModeEnabled,
++        updateChallengeModeConfig,
+       }}
+     >
+       {children}
+diff --git a/models/tile.ts b/models/tile.ts
+index df4c620..e6742bc 100644
+--- a/models/tile.ts
++++ b/models/tile.ts
+@@ -1,7 +1,17 @@
++export type TileKind = "value" | "obstacle";
++
+ export type Tile = {
+   id?: string;
+   position: [number, number];
+   value: number;
++  kind?: TileKind;
+ };
+ 
+ export type TileMap = { [id: string]: Tile };
++
++export const normalizeTile = (tile: Tile): Tile => ({
++  ...tile,
++  kind: tile.kind ?? "value",
++});
++
++export const isObstacleTile = (tile?: Tile) => tile?.kind === "obstacle";
+diff --git a/pages/index.tsx b/pages/index.tsx
+index 75c6e8b..98c44ce 100644
+--- a/pages/index.tsx
++++ b/pages/index.tsx
+@@ -1,10 +1,55 @@
+ import Head from "next/head";
+ import Image from "next/image";
++import { ChangeEvent, useContext } from "react";
+ import Board from "@/components/board";
+ import Score from "@/components/score";
++import {
++  ChallengeModeId,
++  MoveDirection,
++  challengeModeDefinitions,
++  challengeModeOrder,
++  moveDirectionLabels,
++} from "@/constants";
++import { GameContext } from "@/context/game-context";
+ import styles from "@/styles/index.module.css";
+ 
++const formatCountdown = (timeRemainingMs: number | null) => {
++  if (timeRemainingMs === null) {
++    return "未启用";
++  }
++
++  const totalSeconds = Math.max(0, Math.ceil(timeRemainingMs / 1000));
++  const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
++  const seconds = String(totalSeconds % 60).padStart(2, "0");
++
++  return `${minutes}:${seconds}`;
++};
++
+ export default function Home() {
++  const {
++    replayGame,
++    undoMove,
++    canUndo,
++    enabledModes,
++    challengeConfig,
++    disabledDirections,
++    timeRemainingMs,
++    setChallengeModeEnabled,
++    updateChallengeModeConfig,
++  } = useContext(GameContext);
++
++  const handleToggleMode = (modeId: ChallengeModeId) => {
++    setChallengeModeEnabled(modeId, !enabledModes[modeId]);
++  };
++
++  const handleConfigChange = (
++    modeId: ChallengeModeId,
++    field: string,
++    event: ChangeEvent<HTMLInputElement>,
++  ) => {
++    updateChallengeModeConfig(modeId, field, Number(event.target.value));
++  };
++
+   return (
+     <div className={styles.twenty48}>
+       <Head>
+@@ -27,8 +72,82 @@ export default function Home() {
+         <h1>2048</h1>
+         <Score />
+       </header>
+-      <main>
++      <main className={styles.main}>
+         <Board />
++        <section className={styles.challengePanel}>
++          <div className={styles.challengeHeader}>
++            <div>
++              <h2>Challenge Mode</h2>
++              <p>模式可自由组合，修改开关或参数后会立即重开当前对局。</p>
++            </div>
++            <div className={styles.challengeActions}>
++              <button onClick={undoMove} disabled={!canUndo} type="button">
++                Undo
++              </button>
++              <button onClick={replayGame} type="button">
++                Replay
++              </button>
++            </div>
++          </div>
++          <div className={styles.challengeSummary}>
++            <div>
++              <span>倒计时</span>
++              <strong>{formatCountdown(timeRemainingMs)}</strong>
++            </div>
++            <div>
++              <span>禁用方向</span>
++              <strong>
++                {disabledDirections.length > 0
++                  ? disabledDirections
++                      .map((direction: MoveDirection) => moveDirectionLabels[direction])
++                      .join("、")
++                  : "无"}
++              </strong>
++            </div>
++          </div>
++          <div className={styles.modeGrid}>
++            {challengeModeOrder.map((modeId) => {
++              const definition = challengeModeDefinitions[modeId];
++              const modeConfig = challengeConfig[modeId] as Record<string, number>;
++              const isEnabled = enabledModes[modeId];
++
++              return (
++                <section
++                  className={`${styles.modeCard} ${isEnabled ? styles.modeCardActive : ""}`}
++                  key={modeId}
++                >
++                  <label className={styles.modeToggle}>
++                    <input
++                      checked={isEnabled}
++                      onChange={() => handleToggleMode(modeId)}
++                      type="checkbox"
++                    />
++                    <span>{definition.label}</span>
++                  </label>
++                  <p>{definition.description}</p>
++                  <div className={styles.modeControls}>
++                    {definition.controls.map((control) => (
++                      <label className={styles.modeControl} key={`${modeId}-${control.key}`}>
++                        <span>{control.label}</span>
++                        <input
++                          disabled={!isEnabled}
++                          max={control.max}
++                          min={control.min}
++                          onChange={(event) =>
++                            handleConfigChange(modeId, control.key, event)
++                          }
++                          step={control.step}
++                          type="number"
++                          value={modeConfig[control.key]}
++                        />
++                      </label>
++                    ))}
++                  </div>
++                </section>
++              );
++            })}
++          </div>
++        </section>
+       </main>
+       <div>
+         <h2>🚀 Create your own game</h2>
+diff --git a/reducers/game-reducer.ts b/reducers/game-reducer.ts
+index 47d6226..e99e098 100644
+--- a/reducers/game-reducer.ts
++++ b/reducers/game-reducer.ts
+@@ -1,30 +1,32 @@
+ import { flattenDeep, isEqual, isNil } from "lodash";
+ import { uid } from "uid";
+-import { tileCountPerDimension } from "@/constants";
+-import { Tile, TileMap } from "@/models/tile";
++import { MoveDirection, tileCountPerDimension } from "@/constants";
++import { Tile, TileMap, isObstacleTile, normalizeTile } from "@/models/tile";
+ 
+-type GameStatus = "ongoing" | "won" | "lost";
++export type GameStatus = "ongoing" | "won" | "lost";
+ 
+-type State = {
+-  board: string[][];
++export type MovementRules = {
++  maxMergesPerMove?: number;
++};
++
++export type State = {
++  board: (string | undefined)[][];
+   tiles: TileMap;
+   tilesByIds: string[];
+   hasChanged: boolean;
+   score: number;
+   status: GameStatus;
+ };
+-type Action =
++
++export type Action =
+   | { type: "create_tile"; tile: Tile }
+   | { type: "clean_up" }
+-  | { type: "move_up" }
+-  | { type: "move_down" }
+-  | { type: "move_left" }
+-  | { type: "move_right" }
++  | { type: MoveDirection; rules?: MovementRules }
+   | { type: "reset_game" }
+   | { type: "update_status"; status: GameStatus };
+ 
+-function createBoard() {
+-  const board: string[][] = [];
++export function createBoard() {
++  const board: (string | undefined)[][] = [];
+ 
+   for (let i = 0; i < tileCountPerDimension; i += 1) {
+     board[i] = new Array(tileCountPerDimension).fill(undefined);
+@@ -33,13 +35,180 @@ function createBoard() {
+   return board;
+ }
+ 
+-export const initialState: State = {
+-  board: createBoard(),
+-  tiles: {},
+-  tilesByIds: [],
+-  hasChanged: false,
+-  score: 0,
+-  status: "ongoing",
++export function createInitialState(): State {
++  return {
++    board: createBoard(),
++    tiles: {},
++    tilesByIds: [],
++    hasChanged: false,
++    score: 0,
++    status: "ongoing",
++  };
++}
++
++export const initialState: State = createInitialState();
++
++const getMovementRuleLimit = (rules?: MovementRules) => {
++  if (typeof rules?.maxMergesPerMove !== "number") {
++    return Number.POSITIVE_INFINITY;
++  }
++
++  return Math.max(0, Math.floor(rules.maxMergesPerMove));
++};
++
++const canMergeTiles = (previousTile?: Tile, currentTile?: Tile) => {
++  if (!previousTile || !currentTile) {
++    return false;
++  }
++
++  if (isObstacleTile(previousTile) || isObstacleTile(currentTile)) {
++    return false;
++  }
++
++  return previousTile.value === currentTile.value;
++};
++
++const buildLineCoordinates = (direction: MoveDirection, index: number) => {
++  const line: [number, number][] = [];
++
++  for (let offset = 0; offset < tileCountPerDimension; offset += 1) {
++    if (direction === "move_left") {
++      line.push([offset, index]);
++    }
++
++    if (direction === "move_right") {
++      line.push([tileCountPerDimension - 1 - offset, index]);
++    }
++
++    if (direction === "move_up") {
++      line.push([index, offset]);
++    }
++
++    if (direction === "move_down") {
++      line.push([index, tileCountPerDimension - 1 - offset]);
++    }
++  }
++
++  return line;
++};
++
++const move = (state: State, direction: MoveDirection, rules?: MovementRules) => {
++  const newBoard = createBoard();
++  const newTiles: TileMap = {};
++  let hasChanged = false;
++  let score = state.score;
++  let mergesUsed = 0;
++  const mergeLimit = getMovementRuleLimit(rules);
++
++  for (let index = 0; index < tileCountPerDimension; index += 1) {
++    const line = buildLineCoordinates(direction, index);
++    const obstacleIndexes = new Set<number>();
++
++    line.forEach(([x, y], lineIndex) => {
++      const tileId = state.board[y][x];
++
++      if (typeof tileId !== "string") {
++        return;
++      }
++
++      const tile = normalizeTile(state.tiles[tileId]);
++
++      if (!isObstacleTile(tile)) {
++        return;
++      }
++
++      obstacleIndexes.add(lineIndex);
++      newBoard[y][x] = tileId;
++      newTiles[tileId] = {
++        ...tile,
++        position: [x, y],
++      };
++    });
++
++    let segmentStart = 0;
++
++    while (segmentStart < line.length) {
++      while (segmentStart < line.length && obstacleIndexes.has(segmentStart)) {
++        segmentStart += 1;
++      }
++
++      if (segmentStart >= line.length) {
++        break;
++      }
++
++      let segmentEnd = segmentStart;
++      while (segmentEnd < line.length && !obstacleIndexes.has(segmentEnd)) {
++        segmentEnd += 1;
++      }
++
++      const segment = line.slice(segmentStart, segmentEnd);
++      const placedTileIds: string[] = [];
++
++      segment.forEach(([x, y]) => {
++        const tileId = state.board[y][x];
++
++        if (typeof tileId !== "string") {
++          return;
++        }
++
++        const currentTile = normalizeTile(state.tiles[tileId]);
++
++        if (isObstacleTile(currentTile)) {
++          return;
++        }
++
++        const previousPlacedTileId = placedTileIds[placedTileIds.length - 1];
++        const previousPlacedTile =
++          typeof previousPlacedTileId === "string"
++            ? newTiles[previousPlacedTileId]
++            : undefined;
++
++        if (
++          typeof previousPlacedTileId === "string" &&
++          previousPlacedTile &&
++          canMergeTiles(previousPlacedTile, currentTile) &&
++          mergesUsed < mergeLimit
++        ) {
++          score += previousPlacedTile.value * 2;
++          newTiles[previousPlacedTileId] = {
++            ...previousPlacedTile,
++            value: previousPlacedTile.value * 2,
++          };
++          newTiles[tileId] = {
++            ...currentTile,
++            position: previousPlacedTile.position,
++          };
++          hasChanged = true;
++          mergesUsed += 1;
++          return;
++        }
++
++        const nextPosition = segment[placedTileIds.length];
++        newBoard[nextPosition[1]][nextPosition[0]] = tileId;
++        newTiles[tileId] = {
++          ...currentTile,
++          position: nextPosition,
++        };
++
++        if (!isEqual(currentTile.position, nextPosition)) {
++          hasChanged = true;
++        }
++
++        placedTileIds.push(tileId);
++      });
++
++      segmentStart = segmentEnd + 1;
++    }
++  }
++
++  return {
++    ...state,
++    board: newBoard,
++    tiles: newTiles,
++    tilesByIds: state.tilesByIds.filter((tileId) => !isNil(newTiles[tileId])),
++    hasChanged,
++    score,
++  };
+ };
+ 
+ export default function gameReducer(
+@@ -49,9 +218,9 @@ export default function gameReducer(
+   switch (action.type) {
+     case "clean_up": {
+       const flattenBoard = flattenDeep(state.board);
+-      const newTiles: TileMap = flattenBoard.reduce(
+-        (result, tileId: string) => {
+-          if (isNil(tileId)) {
++      const newTiles = flattenBoard.reduce<TileMap>(
++        (result: TileMap, tileId: string | undefined) => {
++          if (typeof tileId !== "string") {
+             return result;
+           }
+ 
+@@ -73,7 +242,7 @@ export default function gameReducer(
+     case "create_tile": {
+       const tileId = uid();
+       const [x, y] = action.tile.position;
+-      const newBoard = JSON.parse(JSON.stringify(state.board));
++      const newBoard = state.board.map((row) => [...row]);
+       newBoard[y][x] = tileId;
+ 
+       return {
+@@ -81,220 +250,21 @@ export default function gameReducer(
+         board: newBoard,
+         tiles: {
+           ...state.tiles,
+-          [tileId]: {
++          [tileId]: normalizeTile({
+             id: tileId,
+             ...action.tile,
+-          },
++          }),
+         },
+         tilesByIds: [...state.tilesByIds, tileId],
+       };
+     }
+-    case "move_up": {
+-      const newBoard = createBoard();
+-      const newTiles: TileMap = {};
+-      let hasChanged = false;
+-      let { score } = state;
+-
+-      for (let x = 0; x < tileCountPerDimension; x++) {
+-        let newY = 0;
+-        let previousTile: Tile | undefined;
+-
+-        for (let y = 0; y < tileCountPerDimension; y++) {
+-          const tileId = state.board[y][x];
+-          const currentTile = state.tiles[tileId];
+-
+-          if (!isNil(tileId)) {
+-            if (previousTile?.value === currentTile.value) {
+-              score += previousTile.value * 2;
+-              newTiles[previousTile.id as string] = {
+-                ...previousTile,
+-                value: previousTile.value * 2,
+-              };
+-              newTiles[tileId] = {
+-                ...currentTile,
+-                position: [x, newY - 1],
+-              };
+-              previousTile = undefined;
+-              hasChanged = true;
+-              continue;
+-            }
+-
+-            newBoard[newY][x] = tileId;
+-            newTiles[tileId] = {
+-              ...currentTile,
+-              position: [x, newY],
+-            };
+-            previousTile = newTiles[tileId];
+-            if (!isEqual(currentTile.position, [x, newY])) {
+-              hasChanged = true;
+-            }
+-            newY++;
+-          }
+-        }
+-      }
+-      return {
+-        ...state,
+-        board: newBoard,
+-        tiles: newTiles,
+-        hasChanged,
+-        score,
+-      };
+-    }
+-    case "move_down": {
+-      const newBoard = createBoard();
+-      const newTiles: TileMap = {};
+-      let hasChanged = false;
+-      let { score } = state;
+-
+-      for (let x = 0; x < tileCountPerDimension; x++) {
+-        let newY = tileCountPerDimension - 1;
+-        let previousTile: Tile | undefined;
+-
+-        for (let y = tileCountPerDimension - 1; y >= 0; y--) {
+-          const tileId = state.board[y][x];
+-          const currentTile = state.tiles[tileId];
+-
+-          if (!isNil(tileId)) {
+-            if (previousTile?.value === currentTile.value) {
+-              score += previousTile.value * 2;
+-              newTiles[previousTile.id as string] = {
+-                ...previousTile,
+-                value: previousTile.value * 2,
+-              };
+-              newTiles[tileId] = {
+-                ...currentTile,
+-                position: [x, newY + 1],
+-              };
+-              previousTile = undefined;
+-              hasChanged = true;
+-              continue;
+-            }
+-
+-            newBoard[newY][x] = tileId;
+-            newTiles[tileId] = {
+-              ...currentTile,
+-              position: [x, newY],
+-            };
+-            previousTile = newTiles[tileId];
+-            if (!isEqual(currentTile.position, [x, newY])) {
+-              hasChanged = true;
+-            }
+-            newY--;
+-          }
+-        }
+-      }
+-      return {
+-        ...state,
+-        board: newBoard,
+-        tiles: newTiles,
+-        hasChanged,
+-        score,
+-      };
+-    }
+-    case "move_left": {
+-      const newBoard = createBoard();
+-      const newTiles: TileMap = {};
+-      let hasChanged = false;
+-      let { score } = state;
+-
+-      for (let y = 0; y < tileCountPerDimension; y++) {
+-        let newX = 0;
+-        let previousTile: Tile | undefined;
+-
+-        for (let x = 0; x < tileCountPerDimension; x++) {
+-          const tileId = state.board[y][x];
+-          const currentTile = state.tiles[tileId];
+-
+-          if (!isNil(tileId)) {
+-            if (previousTile?.value === currentTile.value) {
+-              score += previousTile.value * 2;
+-              newTiles[previousTile.id as string] = {
+-                ...previousTile,
+-                value: previousTile.value * 2,
+-              };
+-              newTiles[tileId] = {
+-                ...currentTile,
+-                position: [newX - 1, y],
+-              };
+-              previousTile = undefined;
+-              hasChanged = true;
+-              continue;
+-            }
+-
+-            newBoard[y][newX] = tileId;
+-            newTiles[tileId] = {
+-              ...currentTile,
+-              position: [newX, y],
+-            };
+-            previousTile = newTiles[tileId];
+-            if (!isEqual(currentTile.position, [newX, y])) {
+-              hasChanged = true;
+-            }
+-            newX++;
+-          }
+-        }
+-      }
+-      return {
+-        ...state,
+-        board: newBoard,
+-        tiles: newTiles,
+-        hasChanged,
+-        score,
+-      };
+-    }
+-    case "move_right": {
+-      const newBoard = createBoard();
+-      const newTiles: TileMap = {};
+-      let hasChanged = false;
+-      let { score } = state;
+-
+-      for (let y = 0; y < tileCountPerDimension; y++) {
+-        let newX = tileCountPerDimension - 1;
+-        let previousTile: Tile | undefined;
+-
+-        for (let x = tileCountPerDimension - 1; x >= 0; x--) {
+-          const tileId = state.board[y][x];
+-          const currentTile = state.tiles[tileId];
+-
+-          if (!isNil(tileId)) {
+-            if (previousTile?.value === currentTile.value) {
+-              score += previousTile.value * 2;
+-              newTiles[previousTile.id as string] = {
+-                ...previousTile,
+-                value: previousTile.value * 2,
+-              };
+-              newTiles[tileId] = {
+-                ...currentTile,
+-                position: [newX + 1, y],
+-              };
+-              previousTile = undefined;
+-              hasChanged = true;
+-              continue;
+-            }
+-
+-            newBoard[y][newX] = tileId;
+-            newTiles[tileId] = {
+-              ...state.tiles[tileId],
+-              position: [newX, y],
+-            };
+-            previousTile = newTiles[tileId];
+-            if (!isEqual(currentTile.position, [newX, y])) {
+-              hasChanged = true;
+-            }
+-            newX--;
+-          }
+-        }
+-      }
+-      return {
+-        ...state,
+-        board: newBoard,
+-        tiles: newTiles,
+-        hasChanged,
+-        score,
+-      };
+-    }
++    case "move_up":
++    case "move_down":
++    case "move_left":
++    case "move_right":
++      return move(state, action.type, action.rules);
+     case "reset_game":
+-      return initialState;
++      return createInitialState();
+     case "update_status":
+       return {
+         ...state,
+diff --git a/styles/board.module.css b/styles/board.module.css
+index f2088b2..24325f2 100644
+--- a/styles/board.module.css
++++ b/styles/board.module.css
+@@ -19,6 +19,11 @@
+   background: var(--cell-background);
+ }
+ 
++.obstacleCell {
++  background: linear-gradient(135deg, #776e65 0%, #5f574f 100%);
++  box-shadow: inset 0 0 0 calc(var(--pixel-size) * 0.35) rgba(255, 255, 255, 0.08);
++}
++
+ .tiles {
+   position: absolute;
+   z-index: 2;
+diff --git a/styles/index.module.css b/styles/index.module.css
+index 69b8807..ef56156 100644
+--- a/styles/index.module.css
++++ b/styles/index.module.css
+@@ -5,10 +5,146 @@
+   max-width: calc(var(--pixel-size) * 37);
+ }
+ 
++.main {
++  display: flex;
++  flex-direction: column;
++  gap: calc(var(--pixel-size) * 2);
++}
++
++.challengePanel {
++  background: var(--cell-background);
++  border-radius: calc(var(--pixel-size) * 0.75);
++  padding: calc(var(--pixel-size) * 1.5);
++}
++
++.challengeHeader {
++  display: flex;
++  flex-direction: column;
++  gap: calc(var(--pixel-size) * 1);
++}
++
++.challengeHeader h2,
++.challengeHeader p {
++  margin: 0;
++}
++
++.challengeHeader p {
++  color: var(--secondary-text-color);
++}
++
++.challengeActions {
++  display: flex;
++  gap: calc(var(--pixel-size) * 1);
++}
++
++.challengeActions > button {
++  appearance: none;
++  border: 0;
++  border-radius: calc(var(--pixel-size) * 0.5);
++  background: var(--secondary-background);
++  color: var(--secondary-text-color);
++  cursor: pointer;
++  font-size: calc(var(--pixel-size) * 1.4);
++  font-weight: 700;
++  padding: calc(var(--pixel-size) * 1) calc(var(--pixel-size) * 1.5);
++}
++
++.challengeActions > button:disabled {
++  cursor: not-allowed;
++  opacity: 0.45;
++}
++
++.challengeSummary {
++  display: grid;
++  gap: calc(var(--pixel-size) * 1);
++  margin-top: calc(var(--pixel-size) * 1.5);
++}
++
++.challengeSummary > div {
++  display: flex;
++  justify-content: space-between;
++  align-items: center;
++  gap: calc(var(--pixel-size) * 1);
++  background: rgba(255, 255, 255, 0.4);
++  border-radius: calc(var(--pixel-size) * 0.5);
++  padding: calc(var(--pixel-size) * 1);
++}
++
++.modeGrid {
++  display: grid;
++  gap: calc(var(--pixel-size) * 1);
++  margin-top: calc(var(--pixel-size) * 1.5);
++}
++
++.modeCard {
++  background: rgba(255, 255, 255, 0.45);
++  border: calc(var(--pixel-size) * 0.25) solid transparent;
++  border-radius: calc(var(--pixel-size) * 0.5);
++  padding: calc(var(--pixel-size) * 1);
++}
++
++.modeCardActive {
++  border-color: var(--secondary-background);
++}
++
++.modeCard > p {
++  color: var(--secondary-text-color);
++  margin: calc(var(--pixel-size) * 0.75) calc(var(--pixel-size) * 0);
++}
++
++.modeToggle {
++  display: flex;
++  align-items: center;
++  gap: calc(var(--pixel-size) * 0.75);
++  font-weight: 700;
++}
++
++.modeControls {
++  display: grid;
++  gap: calc(var(--pixel-size) * 0.75);
++}
++
++.modeControl {
++  display: flex;
++  justify-content: space-between;
++  align-items: center;
++  gap: calc(var(--pixel-size) * 1);
++}
++
++.modeControl > input {
++  width: calc(var(--pixel-size) * 8);
++  border: calc(var(--pixel-size) * 0.25) solid var(--secondary-background);
++  border-radius: calc(var(--pixel-size) * 0.5);
++  color: var(--primary-text-color);
++  font-size: calc(var(--pixel-size) * 1.3);
++  padding: calc(var(--pixel-size) * 0.5) calc(var(--pixel-size) * 0.75);
++}
++
+ @media (min-width: 512px) {
+   .twenty48 {
+     max-width: calc(var(--pixel-size) * 60);
+   }
++
++  .main {
++    display: grid;
++    grid-template-columns: auto minmax(0, 1fr);
++    align-items: start;
++    gap: calc(var(--pixel-size) * 2);
++  }
++
++  .challengeHeader {
++    flex-direction: row;
++    justify-content: space-between;
++    align-items: start;
++  }
++
++  .challengeSummary {
++    grid-template-columns: repeat(2, minmax(0, 1fr));
++  }
++
++  .modeGrid {
++    grid-template-columns: repeat(2, minmax(0, 1fr));
++  }
+ }
+ 
+ .twenty48 > header {

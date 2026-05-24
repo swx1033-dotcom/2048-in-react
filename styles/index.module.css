@@ -5,9 +5,145 @@
   max-width: calc(var(--pixel-size) * 37);
 }
 
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--pixel-size) * 2);
+}
+
+.challengePanel {
+  background: var(--cell-background);
+  border-radius: calc(var(--pixel-size) * 0.75);
+  padding: calc(var(--pixel-size) * 1.5);
+}
+
+.challengeHeader {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--pixel-size) * 1);
+}
+
+.challengeHeader h2,
+.challengeHeader p {
+  margin: 0;
+}
+
+.challengeHeader p {
+  color: var(--secondary-text-color);
+}
+
+.challengeActions {
+  display: flex;
+  gap: calc(var(--pixel-size) * 1);
+}
+
+.challengeActions > button {
+  appearance: none;
+  border: 0;
+  border-radius: calc(var(--pixel-size) * 0.5);
+  background: var(--secondary-background);
+  color: var(--secondary-text-color);
+  cursor: pointer;
+  font-size: calc(var(--pixel-size) * 1.4);
+  font-weight: 700;
+  padding: calc(var(--pixel-size) * 1) calc(var(--pixel-size) * 1.5);
+}
+
+.challengeActions > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.challengeSummary {
+  display: grid;
+  gap: calc(var(--pixel-size) * 1);
+  margin-top: calc(var(--pixel-size) * 1.5);
+}
+
+.challengeSummary > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: calc(var(--pixel-size) * 1);
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: calc(var(--pixel-size) * 0.5);
+  padding: calc(var(--pixel-size) * 1);
+}
+
+.modeGrid {
+  display: grid;
+  gap: calc(var(--pixel-size) * 1);
+  margin-top: calc(var(--pixel-size) * 1.5);
+}
+
+.modeCard {
+  background: rgba(255, 255, 255, 0.45);
+  border: calc(var(--pixel-size) * 0.25) solid transparent;
+  border-radius: calc(var(--pixel-size) * 0.5);
+  padding: calc(var(--pixel-size) * 1);
+}
+
+.modeCardActive {
+  border-color: var(--secondary-background);
+}
+
+.modeCard > p {
+  color: var(--secondary-text-color);
+  margin: calc(var(--pixel-size) * 0.75) calc(var(--pixel-size) * 0);
+}
+
+.modeToggle {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--pixel-size) * 0.75);
+  font-weight: 700;
+}
+
+.modeControls {
+  display: grid;
+  gap: calc(var(--pixel-size) * 0.75);
+}
+
+.modeControl {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: calc(var(--pixel-size) * 1);
+}
+
+.modeControl > input {
+  width: calc(var(--pixel-size) * 8);
+  border: calc(var(--pixel-size) * 0.25) solid var(--secondary-background);
+  border-radius: calc(var(--pixel-size) * 0.5);
+  color: var(--primary-text-color);
+  font-size: calc(var(--pixel-size) * 1.3);
+  padding: calc(var(--pixel-size) * 0.5) calc(var(--pixel-size) * 0.75);
+}
+
 @media (min-width: 512px) {
   .twenty48 {
     max-width: calc(var(--pixel-size) * 60);
+  }
+
+  .main {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: calc(var(--pixel-size) * 2);
+  }
+
+  .challengeHeader {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: start;
+  }
+
+  .challengeSummary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .modeGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

@@ -21,7 +21,8 @@ type Action =
   | { type: "move_left" }
   | { type: "move_right" }
   | { type: "reset_game" }
-  | { type: "update_status"; status: GameStatus };
+  | { type: "update_status"; status: GameStatus }
+  | { type: "update_tiles"; tiles: TileMap };
 
 function createBoard() {
   const board: string[][] = [];
@@ -299,6 +300,14 @@ export default function gameReducer(
       return {
         ...state,
         status: action.status,
+      };
+    case "update_tiles":
+      return {
+        ...state,
+        tiles: {
+          ...state.tiles,
+          ...action.tiles,
+        },
       };
     default:
       return state;

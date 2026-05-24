@@ -5,9 +5,10 @@ import Tile from "./tile";
 import { GameContext } from "@/context/game-context";
 import MobileSwiper, { SwipeInput } from "./mobile-swiper";
 import Splash from "./splash";
+import { containerWidthMobile, containerWidthDesktop, tileCountPerDimension } from "@/constants";
 
 export default function Board() {
-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
+  const { getTiles, moveTiles, startGame, status, challengeState } = useContext(GameContext);
   const initialized = useRef(false);
 
   const handleKeyDown = useCallback(
@@ -69,6 +70,38 @@ export default function Board() {
     ));
   };
 
+  const renderObstacles = () => {
+    const isWideScreen = typeof window !== "undefined" && window.innerWidth >= 512;
+    const containerWidth = isWideScreen
+      ? containerWidthDesktop
+      : containerWidthMobile;
+
+    const positionToPixels = (position: number) =>
+      (position / tileCountPerDimension) * containerWidth;
+
+    const entries: string[] = Array.from(challengeState.obstaclePositions);
+    return entries.map((key) => {
+      const parts = key.split(",");
+      const x = parseInt(parts[0], 10);
+      const y = parseInt(parts[1], 10);
+
+      const style = {
+        left: positionToPixels(x),
+        top: positionToPixels(y),
+      };
+
+      return (
+        <div
+          key={`obs-${key}`}
+          className={styles.obstacle}
+          style={style}
+        >
+          &#9762;
+        </div>
+      );
+    });
+  };
+
   useEffect(() => {
     if (initialized.current === false) {
       startGame();
@@ -89,7 +122,10 @@ export default function Board() {
       <div className={styles.board}>
         {status === "won" && <Splash heading="You won!" type="won" />}
         {status === "lost" && <Splash heading="You lost!" />}
-        <div className={styles.tiles}>{renderTiles()}</div>
+        <div className={styles.tiles}>
+          {renderTiles()}
+          {renderObstacles()}
+        </div>
         <div className={styles.grid}>{renderGrid()}</div>
       </div>
     </MobileSwiper>

@@ -1,0 +1,614 @@
+diff --git a/components/board.tsx b/components/board.tsx
+index 57e2531..8fc9304 100644
+--- a/components/board.tsx
++++ b/components/board.tsx
+@@ -5,9 +5,10 @@ import Tile from "./tile";
+ import { GameContext } from "@/context/game-context";
+ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
+ import Splash from "./splash";
++import { containerWidthMobile, containerWidthDesktop, tileCountPerDimension } from "@/constants";
+ 
+ export default function Board() {
+-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
++  const { getTiles, moveTiles, startGame, status, challengeState } = useContext(GameContext);
+   const initialized = useRef(false);
+ 
+   const handleKeyDown = useCallback(
+@@ -69,6 +70,38 @@ export default function Board() {
+     ));
+   };
+ 
++  const renderObstacles = () => {
++    const isWideScreen = typeof window !== "undefined" && window.innerWidth >= 512;
++    const containerWidth = isWideScreen
++      ? containerWidthDesktop
++      : containerWidthMobile;
++
++    const positionToPixels = (position: number) =>
++      (position / tileCountPerDimension) * containerWidth;
++
++    const entries: string[] = Array.from(challengeState.obstaclePositions);
++    return entries.map((key) => {
++      const parts = key.split(",");
++      const x = parseInt(parts[0], 10);
++      const y = parseInt(parts[1], 10);
++
++      const style = {
++        left: positionToPixels(x),
++        top: positionToPixels(y),
++      };
++
++      return (
++        <div
++          key={`obs-${key}`}
++          className={styles.obstacle}
++          style={style}
++        >
++          &#9762;
++        </div>
++      );
++    });
++  };
++
+   useEffect(() => {
+     if (initialized.current === false) {
+       startGame();
+@@ -89,7 +122,10 @@ export default function Board() {
+       <div className={styles.board}>
+         {status === "won" && <Splash heading="You won!" type="won" />}
+         {status === "lost" && <Splash heading="You lost!" />}
+-        <div className={styles.tiles}>{renderTiles()}</div>
++        <div className={styles.tiles}>
++          {renderTiles()}
++          {renderObstacles()}
++        </div>
+         <div className={styles.grid}>{renderGrid()}</div>
+       </div>
+     </MobileSwiper>
+diff --git a/context/game-context.tsx b/context/game-context.tsx
+index 0b93edc..79932e1 100644
+--- a/context/game-context.tsx
++++ b/context/game-context.tsx
+@@ -4,6 +4,8 @@ import {
+   useCallback,
+   useEffect,
+   useReducer,
++  useRef,
++  useState,
+ } from "react";
+ import { isNil, throttle } from "lodash";
+ import {
+@@ -12,35 +14,212 @@ import {
+   tileCountPerDimension,
+ } from "@/constants";
+ import { Tile } from "@/models/tile";
++import {
++  ChallengeConfig,
++  ChallengeState,
++  Direction,
++  defaultChallengeState,
++  GameState,
++  PluginAction,
++} from "@/models/challenge";
+ import gameReducer, { initialState } from "@/reducers/game-reducer";
++import {
++  allChallengePlugins,
++  createPluginManager,
++  serializeChallengeState,
++  deserializeChallengeState,
++} from "@/challenge";
++import { ChallengePlugin } from "@/challenge/types";
++
++type MoveDirection = Direction;
+ 
+-type MoveDirection = "move_up" | "move_down" | "move_left" | "move_right";
++type ChallengeContextType = {
++  score: number;
++  status: string;
++  moveTiles: (_: MoveDirection) => void;
++  getTiles: () => Tile[];
++  startGame: () => void;
++  challengeState: ChallengeState;
++  challengeConfigs: Record<string, ChallengeConfig>;
++  setChallengeConfig: (id: string, config: ChallengeConfig) => void;
++  availablePlugins: ChallengePlugin[];
++};
+ 
+-export const GameContext = createContext({
++export const GameContext = createContext<ChallengeContextType>({
+   score: 0,
+   status: "ongoing",
+   moveTiles: (_: MoveDirection) => {},
+-  getTiles: () => [] as Tile[],
++  getTiles: () => [],
+   startGame: () => {},
++  challengeState: defaultChallengeState,
++  challengeConfigs: {},
++  setChallengeConfig: (_: string, _config: ChallengeConfig) => {},
++  availablePlugins: [],
+ });
+ 
++function migrateOldSave(raw: string): {
++  gameState: GameState | null;
++  challengeState: ChallengeState;
++  challengeConfigs: Record<string, ChallengeConfig>;
++} | null {
++  try {
++    const data = JSON.parse(raw);
++
++    if (data && data.challengeState) {
++      return {
++        gameState: data.gameState || null,
++        challengeState: deserializeChallengeState(data.challengeState),
++        challengeConfigs: data.challengeConfigs || {},
++      };
++    }
++
++    const gameState = data as GameState;
++    if (gameState && gameState.board && gameState.tiles) {
++      return {
++        gameState,
++        challengeState: defaultChallengeState,
++        challengeConfigs: {},
++      };
++    }
++
++    return null;
++  } catch {
++    return null;
++  }
++}
++
++const STORAGE_KEY = "2048-game-state";
++
++function loadState(): {
++  gameState: GameState | null;
++  challengeState: ChallengeState;
++  challengeConfigs: Record<string, ChallengeConfig>;
++} {
++  if (typeof window === "undefined") {
++    return {
++      gameState: null,
++      challengeState: defaultChallengeState,
++      challengeConfigs: {},
++    };
++  }
++
++  try {
++    const raw = localStorage.getItem(STORAGE_KEY);
++    if (raw) {
++      const result = migrateOldSave(raw);
++      if (result) return result;
++    }
++  } catch {
++    // Silently ignore corrupted saves
++  }
++
++  return {
++    gameState: null,
++    challengeState: defaultChallengeState,
++    challengeConfigs: {},
++  };
++}
++
++function saveState(
++  gameState: GameState,
++  challengeState: ChallengeState,
++  challengeConfigs: Record<string, ChallengeConfig>,
++): void {
++  if (typeof window === "undefined") return;
++  try {
++    const data = {
++      gameState,
++      challengeState: serializeChallengeState(challengeState),
++      challengeConfigs,
++    };
++    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
++  } catch {
++    // Silently ignore storage errors
++  }
++}
++
++const pluginManager = createPluginManager(allChallengePlugins);
++
++function applyPluginActions(
++  dispatch: ReturnType<typeof useReducer>[1],
++  actions: PluginAction[],
++): void {
++  for (let i = 0; i < actions.length; i++) {
++    const action = actions[i];
++    switch (action.type) {
++      case "create_tile":
++        dispatch({ type: "create_tile", tile: action.tile });
++        break;
++      case "update_tiles":
++        dispatch({ type: "update_tiles", tiles: action.tiles });
++        break;
++    }
++  }
++}
++
+ export default function GameProvider({ children }: PropsWithChildren) {
+-  const [gameState, dispatch] = useReducer(gameReducer, initialState);
++  const saved = loadState();
++  const [gameState, dispatch] = useReducer(
++    gameReducer,
++    saved.gameState || initialState,
++  );
++  const [challengeState, setChallengeState] = useState<ChallengeState>(
++    saved.challengeState,
++  );
++  const [challengeConfigs, setChallengeConfigs] = useState<
++    Record<string, ChallengeConfig>
++  >(saved.challengeConfigs);
++  const turnCountRef = useRef(0);
++  const lastDirectionRef = useRef<Direction>("move_up");
++  const obstaclePositionsRef = useRef<Set<string>>(
++    saved.challengeState.obstaclePositions,
++  );
++  const gameStateRef = useRef<GameState>(
++    saved.gameState || initialState as GameState,
++  );
++
++  gameStateRef.current = gameState as GameState;
+ 
+-  const getEmptyCells = () => {
++  const updateChallengeState = useCallback(
++    (next: ChallengeState | ((prev: ChallengeState) => ChallengeState)) => {
++      setChallengeState((prev) => {
++        const resolved = typeof next === "function" ? next(prev) : next;
++        obstaclePositionsRef.current = resolved.obstaclePositions;
++        return resolved;
++      });
++    },
++    [],
++  );
++
++  const setChallengeConfig = useCallback(
++    (id: string, config: ChallengeConfig) => {
++      setChallengeConfigs((prev) => ({
++        ...prev,
++        [id]: config,
++      }));
++    },
++    [],
++  );
++
++  const getEmptyCells = useCallback(() => {
+     const results: [number, number][] = [];
++    const state = gameStateRef.current;
++    const obsPositions = obstaclePositionsRef.current;
+ 
+     for (let x = 0; x < tileCountPerDimension; x++) {
+       for (let y = 0; y < tileCountPerDimension; y++) {
+-        if (isNil(gameState.board[y][x])) {
++        if (
++          isNil(state.board[y][x]) &&
++          !obsPositions.has(`${x},${y}`)
++        ) {
+           results.push([x, y]);
+         }
+       }
+     }
+     return results;
+-  };
++  }, []);
+ 
+-  const appendRandomTile = () => {
++  const appendRandomTile = useCallback(() => {
+     const emptyCells = getEmptyCells();
+     if (emptyCells.length > 0) {
+       const cellIndex = Math.floor(Math.random() * emptyCells.length);
+@@ -50,77 +229,166 @@ export default function GameProvider({ children }: PropsWithChildren) {
+       };
+       dispatch({ type: "create_tile", tile: newTile });
+     }
+-  };
++  }, [getEmptyCells]);
+ 
+-  const getTiles = () => {
++  const getTiles = useCallback(() => {
+     return gameState.tilesByIds.map((tileId) => gameState.tiles[tileId]);
+-  };
++  }, [gameState.tilesByIds, gameState.tiles]);
+ 
+   const moveTiles = useCallback(
+     throttle(
+-      (type: MoveDirection) => dispatch({ type }),
+-      mergeAnimationDuration * 1.05,
+-      { trailing: false },
+-    ),
+-    [dispatch],
+-  );
+-
+-  const startGame = () => {
+-    dispatch({ type: "reset_game" });
+-    dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
+-    dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
+-  };
+-
+-  const checkGameState = () => {
+-    const isWon =
+-      Object.values(gameState.tiles).filter((t) => t.value === gameWinTileValue)
+-        .length > 0;
+-
+-    if (isWon) {
+-      dispatch({ type: "update_status", status: "won" });
+-      return;
+-    }
++      (type: MoveDirection) => {
++        const gameStateTyped = gameState as GameState;
+ 
+-    const { tiles, board } = gameState;
++        const disabledDirs = pluginManager.getDisabledDirections(
++          gameStateTyped,
++          challengeState,
++          turnCountRef.current,
++          challengeConfigs,
++        );
+ 
+-    const maxIndex = tileCountPerDimension - 1;
+-    for (let x = 0; x < maxIndex; x += 1) {
+-      for (let y = 0; y < maxIndex; y += 1) {
+-        if (
+-          isNil(gameState.board[x][y]) ||
+-          isNil(gameState.board[x + 1][y]) ||
+-          isNil(gameState.board[x][y + 1])
+-        ) {
++        if (disabledDirs.indexOf(type) !== -1) {
+           return;
+         }
+ 
+-        if (tiles[board[x][y]].value === tiles[board[x + 1][y]].value) {
+-          return;
+-        }
++        const beforeResult = pluginManager.runBeforeMove(
++          gameStateTyped,
++          challengeState,
++          type,
++          turnCountRef.current,
++          challengeConfigs,
++        );
+ 
+-        if (tiles[board[x][y]].value === tiles[board[x][y + 1]].value) {
++        if (beforeResult.blocked) {
+           return;
+         }
+-      }
+-    }
+ 
+-    dispatch({ type: "update_status", status: "lost" });
+-  };
++        updateChallengeState(beforeResult.challenge);
++        applyPluginActions(dispatch, beforeResult.actions);
++        lastDirectionRef.current = type;
++
++        dispatch({ type });
++      },
++      mergeAnimationDuration * 1.05,
++      { trailing: false },
++    ),
++    [gameState, challengeState, challengeConfigs],
++  );
++
++  const startGame = useCallback(() => {
++    dispatch({ type: "reset_game" });
++    updateChallengeState(defaultChallengeState);
++    turnCountRef.current = 0;
++    lastDirectionRef.current = "move_up";
++    dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
++    dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
++  }, []);
+ 
+   useEffect(() => {
+     if (gameState.hasChanged) {
++      turnCountRef.current += 1;
++
+       setTimeout(() => {
+         dispatch({ type: "clean_up" });
++
++        const currentGameState = gameStateRef.current;
++
++        const afterResult = pluginManager.runAfterMove(
++          currentGameState,
++          challengeState,
++          lastDirectionRef.current,
++          turnCountRef.current - 1,
++          challengeConfigs,
++        );
++
++        updateChallengeState(afterResult.challenge);
++        applyPluginActions(dispatch, afterResult.actions);
++
+         appendRandomTile();
+       }, mergeAnimationDuration);
+     }
++    // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [gameState.hasChanged]);
+ 
+   useEffect(() => {
+     if (!gameState.hasChanged) {
+-      checkGameState();
++      const currentGameState = gameStateRef.current;
++      const currentChallenge = challengeState;
++
++      const isWon =
++        Object.values(currentGameState.tiles).filter(
++          (t) => t.value === gameWinTileValue,
++        ).length > 0;
++
++      if (isWon) {
++        dispatch({ type: "update_status", status: "won" });
++        return;
++      }
++
++      const challengeLost = pluginManager.checkGameOver(
++        currentGameState,
++        currentChallenge,
++        turnCountRef.current,
++        challengeConfigs,
++      );
++
++      if (challengeLost) {
++        dispatch({ type: "update_status", status: "lost" });
++        return;
++      }
++
++      const { tiles, board } = currentGameState;
++
++      for (let x = 0; x < tileCountPerDimension - 1; x += 1) {
++        for (let y = 0; y < tileCountPerDimension - 1; y += 1) {
++          if (
++            isNil(board[x][y]) ||
++            isNil(board[x + 1][y]) ||
++            isNil(board[x][y + 1])
++          ) {
++            return;
++          }
++
++          if (tiles[board[x][y]].value === tiles[board[x + 1][y]].value) {
++            return;
++          }
++
++          if (tiles[board[x][y]].value === tiles[board[x][y + 1]].value) {
++            return;
++          }
++        }
++      }
++
++      dispatch({ type: "update_status", status: "lost" });
+     }
+-  }, [gameState.hasChanged]);
++  }, [gameState.hasChanged, challengeState, challengeConfigs]);
++
++  useEffect(() => {
++    saveState(gameState as GameState, challengeState, challengeConfigs);
++  }, [gameState, challengeState, challengeConfigs]);
++
++  useEffect(() => {
++    const hasCountdown =
++      challengeConfigs.countdown &&
++      challengeConfigs.countdown.enabled;
++
++    if (!hasCountdown) return;
++
++    const interval = setInterval(() => {
++      updateChallengeState((prev) => {
++        const tickResult = pluginManager.runTick(
++          gameStateRef.current,
++          prev,
++          turnCountRef.current,
++          challengeConfigs,
++        );
++        applyPluginActions(dispatch, tickResult.actions);
++        return tickResult.challenge;
++      });
++    }, 1000);
++
++    return () => clearInterval(interval);
++  }, [challengeConfigs]);
+ 
+   return (
+     <GameContext.Provider
+@@ -130,9 +398,13 @@ export default function GameProvider({ children }: PropsWithChildren) {
+         getTiles,
+         moveTiles,
+         startGame,
++        challengeState,
++        challengeConfigs,
++        setChallengeConfig,
++        availablePlugins: allChallengePlugins,
+       }}
+     >
+       {children}
+     </GameContext.Provider>
+   );
+-}
++}
+\ No newline at end of file
+diff --git a/pages/index.tsx b/pages/index.tsx
+index 75c6e8b..cc9beac 100644
+--- a/pages/index.tsx
++++ b/pages/index.tsx
+@@ -2,6 +2,7 @@ import Head from "next/head";
+ import Image from "next/image";
+ import Board from "@/components/board";
+ import Score from "@/components/score";
++import ChallengePanel from "@/components/challenge-panel";
+ import styles from "@/styles/index.module.css";
+ 
+ export default function Home() {
+@@ -29,6 +30,7 @@ export default function Home() {
+       </header>
+       <main>
+         <Board />
++        <ChallengePanel />
+       </main>
+       <div>
+         <h2>🚀 Create your own game</h2>
+diff --git a/reducers/game-reducer.ts b/reducers/game-reducer.ts
+index 47d6226..06c0f6c 100644
+--- a/reducers/game-reducer.ts
++++ b/reducers/game-reducer.ts
+@@ -21,7 +21,8 @@ type Action =
+   | { type: "move_left" }
+   | { type: "move_right" }
+   | { type: "reset_game" }
+-  | { type: "update_status"; status: GameStatus };
++  | { type: "update_status"; status: GameStatus }
++  | { type: "update_tiles"; tiles: TileMap };
+ 
+ function createBoard() {
+   const board: string[][] = [];
+@@ -300,6 +301,14 @@ export default function gameReducer(
+         ...state,
+         status: action.status,
+       };
++    case "update_tiles":
++      return {
++        ...state,
++        tiles: {
++          ...state.tiles,
++          ...action.tiles,
++        },
++      };
+     default:
+       return state;
+   }
+diff --git a/styles/board.module.css b/styles/board.module.css
+index f2088b2..9df60a6 100644
+--- a/styles/board.module.css
++++ b/styles/board.module.css
+@@ -45,6 +45,32 @@
+   }
+ 
+   .tiles {
++  margin: calc(var(--pixel-size) * 1);
++  }
++}
++
++.obstacle {
++  position: absolute;
++  width: calc(var(--pixel-size) * 8);
++  height: calc(var(--pixel-size) * 8);
++  margin: calc(var(--pixel-size) * 0.5);
++  border-radius: calc(var(--pixel-size) * 0.5);
++  background: #555;
++  color: #999;
++  font-size: calc(var(--pixel-size) * 4);
++  line-height: calc(var(--pixel-size) * 8);
++  font-weight: bold;
++  text-align: center;
++  z-index: 3;
++  box-shadow: inset 0 0 0 2px #444;
++}
++
++@media (min-width: 512px) {
++  .obstacle {
++    width: calc(var(--pixel-size) * 12.5);
++    height: calc(var(--pixel-size) * 12.5);
+     margin: calc(var(--pixel-size) * 1);
++    font-size: calc(var(--pixel-size) * 6);
++    line-height: calc(var(--pixel-size) * 12.5);
+   }
+ }

@@ -1,18 +1,22 @@
 /**
  * Game Layout
  */
-export const containerWidthMobile = 288; // px
+export const containerWidthMobile = 288;
 
-export const containerWidthDesktop = 464; // px
+export const containerWidthDesktop = 464;
 
-export const tileCountPerDimension = 4;
+export const defaultBoardSize = 4;
+
+export const infiniteModeThreshold = 4096;
+
+export const maxObstacleCount = 3;
 
 /**
  * Animations
  */
-export const mergeAnimationDuration = 100; // ms
+export const mergeAnimationDuration = 100;
 
-export const moveAnimationDuration = 200; // ms
+export const moveAnimationDuration = 200;
 
 /**
  * Game setup

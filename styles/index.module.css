@@ -2,12 +2,12 @@
   margin: calc(var(--pixel-size) * 0) auto;
   padding: calc(var(--pixel-size) * 1);
   width: 100%;
-  max-width: calc(var(--pixel-size) * 37);
+  max-width: calc(var(--pixel-size) * 56);
 }
 
 @media (min-width: 512px) {
   .twenty48 {
-    max-width: calc(var(--pixel-size) * 60);
+    max-width: calc(var(--pixel-size) * 90);
   }
 }
 

@@ -1,0 +1,45 @@
+.selector {
+  display: flex;
+  gap: calc(var(--pixel-size) * 2);
+  margin-bottom: calc(var(--pixel-size) * 1.5);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.section {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--pixel-size) * 0.5);
+}
+
+.label {
+  font-size: calc(var(--pixel-size) * 1.75);
+  font-weight: bold;
+  color: var(--primary-text-color);
+}
+
+.option {
+  background: var(--cell-background);
+  border: calc(var(--pixel-size) * 0.25) solid var(--secondary-background);
+  border-radius: calc(var(--pixel-size) * 0.375);
+  color: var(--primary-text-color);
+  font-size: calc(var(--pixel-size) * 1.75);
+  font-weight: bold;
+  padding: calc(var(--pixel-size) * 0.5) calc(var(--pixel-size) * 1);
+  cursor: pointer;
+  transition: background 100ms;
+}
+
+.option:hover {
+  background: var(--tile-background);
+}
+
+.active {
+  background: var(--button-background);
+  color: var(--secondary-text-color);
+  border-color: var(--button-background);
+}
+
+.active:hover {
+  background: var(--button-background);
+}

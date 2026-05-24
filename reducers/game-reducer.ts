@@ -3,9 +3,11 @@ import { uid } from "uid";
 import { tileCountPerDimension } from "@/constants";
 import { Tile, TileMap } from "@/models/tile";
 
+const MAX_HISTORY_SIZE = 50;
+
 type GameStatus = "ongoing" | "won" | "lost";
 
-type State = {
+type GameState = {
   board: string[][];
   tiles: TileMap;
   tilesByIds: string[];
@@ -13,6 +15,14 @@ type State = {
   score: number;
   status: GameStatus;
 };
+
+type HistoryState = {
+  history: GameState[];
+  historyIndex: number;
+};
+
+type State = GameState & HistoryState;
+
 type Action =
   | { type: "create_tile"; tile: Tile }
   | { type: "clean_up" }
@@ -21,7 +31,10 @@ type Action =
   | { type: "move_left" }
   | { type: "move_right" }
   | { type: "reset_game" }
-  | { type: "update_status"; status: GameStatus };
+  | { type: "update_status"; status: GameStatus }
+  | { type: "push_history"; state: GameState }
+  | { type: "jump_to_history"; historyIndex: number }
+  | { type: "clear_future_history" };
 
 function createBoard() {
   const board: string[][] = [];
@@ -34,6 +47,17 @@ function createBoard() {
 }
 
 export const initialState: State = {
+  board: createBoard(),
+  tiles: {},
+  tilesByIds: [],
+  hasChanged: false,
+  score: 0,
+  status: "ongoing",
+  history: [],
+  historyIndex: -1,
+};
+
+export const gameReducerInitial: GameState = {
   board: createBoard(),
   tiles: {},
   tilesByIds: [],
@@ -294,11 +318,44 @@ export default function gameReducer(
       };
     }
     case "reset_game":
-      return initialState;
+      return {
+        ...initialState,
+        history: [],
+        historyIndex: -1,
+      };
     case "update_status":
       return {
         ...state,
         status: action.status,
+      };
+    case "push_history": {
+      const newHistory = state.history.slice(0, state.historyIndex + 1);
+      newHistory.push(action.state);
+      if (newHistory.length > MAX_HISTORY_SIZE) {
+        newHistory.shift();
+      }
+      return {
+        ...state,
+        history: newHistory,
+        historyIndex: newHistory.length - 1,
+      };
+    }
+    case "jump_to_history": {
+      const targetIndex = Math.max(0, Math.min(action.historyIndex, state.history.length - 1));
+      const targetState = state.history[targetIndex];
+      if (!targetState) {
+        return state;
+      }
+      return {
+        ...targetState,
+        history: state.history,
+        historyIndex: targetIndex,
+      };
+    }
+    case "clear_future_history":
+      return {
+        ...state,
+        history: state.history.slice(0, state.historyIndex + 1),
       };
     default:
       return state;

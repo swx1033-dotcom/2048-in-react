@@ -13,19 +13,109 @@ import {
 } from "@/constants";
 import { Tile } from "@/models/tile";
 import gameReducer, { initialState } from "@/reducers/game-reducer";
+import { withChallenges } from "@/reducers/challenge-enhancer";
+import { obstaclePlugin, decayPlugin, mergeLimitPlugin, disableDirectionPlugin, countdownPlugin } from "@/reducers/plugins";
 
 type MoveDirection = "move_up" | "move_down" | "move_left" | "move_right";
 
 export const GameContext = createContext({
   score: 0,
   status: "ongoing",
+  challengeState: initialState.challengeState,
   moveTiles: (_: MoveDirection) => {},
   getTiles: () => [] as Tile[],
   startGame: () => {},
+  updateConfig: (_: any) => {},
 });
 
+export function withUndo(reducer: any) {
+  return function (state: any, action: any) {
+    if (action.type === "undo") {
+      if (state.past.length === 0) return state;
+      const previous = state.past[state.past.length - 1];
+      const newPast = state.past.slice(0, state.past.length - 1);
+      return { past: newPast, present: previous, future: [state.present, ...state.future] };
+    }
+    if (action.type === "redo") {
+      if (state.future.length === 0) return state;
+      const next = state.future[0];
+      const newFuture = state.future.slice(1);
+      return { past: [...state.past, state.present], present: next, future: newFuture };
+    }
+    
+    const newPresent = reducer(state.present, action);
+    if (newPresent === state.present) return state;
+
+    if (action.type.startsWith("move_") || action.type === "reset_game") {
+      return { past: [...state.past, state.present], present: newPresent, future: [] };
+    }
+    return { ...state, present: newPresent };
+  }
+}
+
+const rootReducer = withUndo(withChallenges(gameReducer, [
+  obstaclePlugin,
+  decayPlugin,
+  mergeLimitPlugin,
+  disableDirectionPlugin,
+  countdownPlugin
+]));
+
 export default function GameProvider({ children }: PropsWithChildren) {
-  const [gameState, dispatch] = useReducer(gameReducer, initialState);
+  const [gameStateWrapper, dispatch] = useReducer(rootReducer, { past: [], present: initialState, future: [] }, (init) => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("2048-state");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          let loadedPresent = parsed;
+          let loadedPast = [];
+          let loadedFuture = [];
+
+          if (parsed.present) {
+            loadedPresent = parsed.present;
+            loadedPast = parsed.past || [];
+            loadedFuture = parsed.future || [];
+          }
+
+          return {
+            past: loadedPast,
+            present: {
+              ...init.present,
+              ...loadedPresent,
+              challengeState: {
+                ...init.present.challengeState,
+                ...loadedPresent.challengeState,
+                config: {
+                  ...init.present.challengeState?.config,
+                  ...loadedPresent.challengeState?.config
+                }
+              }
+            },
+            future: loadedFuture
+          };
+        } catch (e) {}
+      }
+    }
+    return init;
+  });
+
+  const gameState = gameStateWrapper.present;
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("2048-state", JSON.stringify(gameStateWrapper));
+    }
+  }, [gameStateWrapper]);
+
+  useEffect(() => {
+    if (gameState.challengeState?.config?.countdown?.enabled && gameState.status === "ongoing") {
+      const timer = setInterval(() => {
+        dispatch({ type: "plugin_action", payload: { type: "tick" } });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [gameState.challengeState?.config?.countdown?.enabled, gameState.status]);
 
   const getEmptyCells = () => {
     const results: [number, number][] = [];
@@ -94,11 +184,17 @@ export default function GameProvider({ children }: PropsWithChildren) {
           return;
         }
 
-        if (tiles[board[x][y]].value === tiles[board[x + 1][y]].value) {
+        if (
+          tiles[board[x][y]].value === tiles[board[x + 1][y]].value &&
+          !tiles[board[x][y]].isObstacle
+        ) {
           return;
         }
 
-        if (tiles[board[x][y]].value === tiles[board[x][y + 1]].value) {
+        if (
+          tiles[board[x][y]].value === tiles[board[x][y + 1]].value &&
+          !tiles[board[x][y]].isObstacle
+        ) {
           return;
         }
       }
@@ -122,14 +218,25 @@ export default function GameProvider({ children }: PropsWithChildren) {
     }
   }, [gameState.hasChanged]);
 
+  const updateConfig = (config: any) => {
+    dispatch({ type: "update_config", config });
+  };
+
+  const undo = () => dispatch({ type: "undo" });
+  const redo = () => dispatch({ type: "redo" });
+
   return (
     <GameContext.Provider
       value={{
         score: gameState.score,
         status: gameState.status,
+        challengeState: gameState.challengeState,
         getTiles,
         moveTiles,
         startGame,
+        updateConfig,
+        undo,
+        redo,
       }}
     >
       {children}

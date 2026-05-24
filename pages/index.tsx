@@ -2,6 +2,7 @@ import Head from "next/head";
 import Image from "next/image";
 import Board from "@/components/board";
 import Score from "@/components/score";
+import ChallengeControls from "@/components/challenge-controls";
 import styles from "@/styles/index.module.css";
 
 export default function Home() {
@@ -29,6 +30,7 @@ export default function Home() {
       </header>
       <main>
         <Board />
+        <ChallengeControls />
       </main>
       <div>
         <h2>🚀 Create your own game</h2>

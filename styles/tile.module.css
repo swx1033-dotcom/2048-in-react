@@ -70,6 +70,19 @@
 }
 /* -=-=-=-= END OF TEXT SIZE =-=-=-=- */
 
+.tile\-1 {
+  background: #333;
+  color: transparent;
+}
+.tile\-1::after {
+  content: "🪨";
+  color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+}
+
 .tile2 {
   box-shadow:
     0 0 30px 10px rgba(243, 215, 116, 0),

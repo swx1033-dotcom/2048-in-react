@@ -1,0 +1,298 @@
+diff --git a/context/game-context.tsx b/context/game-context.tsx
+index 0b93edc..20f3f8c 100644
+--- a/context/game-context.tsx
++++ b/context/game-context.tsx
+@@ -13,19 +13,109 @@ import {
+ } from "@/constants";
+ import { Tile } from "@/models/tile";
+ import gameReducer, { initialState } from "@/reducers/game-reducer";
++import { withChallenges } from "@/reducers/challenge-enhancer";
++import { obstaclePlugin, decayPlugin, mergeLimitPlugin, disableDirectionPlugin, countdownPlugin } from "@/reducers/plugins";
+ 
+ type MoveDirection = "move_up" | "move_down" | "move_left" | "move_right";
+ 
+ export const GameContext = createContext({
+   score: 0,
+   status: "ongoing",
++  challengeState: initialState.challengeState,
+   moveTiles: (_: MoveDirection) => {},
+   getTiles: () => [] as Tile[],
+   startGame: () => {},
++  updateConfig: (_: any) => {},
+ });
+ 
++export function withUndo(reducer: any) {
++  return function (state: any, action: any) {
++    if (action.type === "undo") {
++      if (state.past.length === 0) return state;
++      const previous = state.past[state.past.length - 1];
++      const newPast = state.past.slice(0, state.past.length - 1);
++      return { past: newPast, present: previous, future: [state.present, ...state.future] };
++    }
++    if (action.type === "redo") {
++      if (state.future.length === 0) return state;
++      const next = state.future[0];
++      const newFuture = state.future.slice(1);
++      return { past: [...state.past, state.present], present: next, future: newFuture };
++    }
++    
++    const newPresent = reducer(state.present, action);
++    if (newPresent === state.present) return state;
++
++    if (action.type.startsWith("move_") || action.type === "reset_game") {
++      return { past: [...state.past, state.present], present: newPresent, future: [] };
++    }
++    return { ...state, present: newPresent };
++  }
++}
++
++const rootReducer = withUndo(withChallenges(gameReducer, [
++  obstaclePlugin,
++  decayPlugin,
++  mergeLimitPlugin,
++  disableDirectionPlugin,
++  countdownPlugin
++]));
++
+ export default function GameProvider({ children }: PropsWithChildren) {
+-  const [gameState, dispatch] = useReducer(gameReducer, initialState);
++  const [gameStateWrapper, dispatch] = useReducer(rootReducer, { past: [], present: initialState, future: [] }, (init) => {
++    if (typeof window !== "undefined") {
++      const saved = localStorage.getItem("2048-state");
++      if (saved) {
++        try {
++          const parsed = JSON.parse(saved);
++          let loadedPresent = parsed;
++          let loadedPast = [];
++          let loadedFuture = [];
++
++          if (parsed.present) {
++            loadedPresent = parsed.present;
++            loadedPast = parsed.past || [];
++            loadedFuture = parsed.future || [];
++          }
++
++          return {
++            past: loadedPast,
++            present: {
++              ...init.present,
++              ...loadedPresent,
++              challengeState: {
++                ...init.present.challengeState,
++                ...loadedPresent.challengeState,
++                config: {
++                  ...init.present.challengeState?.config,
++                  ...loadedPresent.challengeState?.config
++                }
++              }
++            },
++            future: loadedFuture
++          };
++        } catch (e) {}
++      }
++    }
++    return init;
++  });
++
++  const gameState = gameStateWrapper.present;
++
++  useEffect(() => {
++    if (typeof window !== "undefined") {
++      localStorage.setItem("2048-state", JSON.stringify(gameStateWrapper));
++    }
++  }, [gameStateWrapper]);
++
++  useEffect(() => {
++    if (gameState.challengeState?.config?.countdown?.enabled && gameState.status === "ongoing") {
++      const timer = setInterval(() => {
++        dispatch({ type: "plugin_action", payload: { type: "tick" } });
++      }, 1000);
++      return () => clearInterval(timer);
++    }
++  }, [gameState.challengeState?.config?.countdown?.enabled, gameState.status]);
+ 
+   const getEmptyCells = () => {
+     const results: [number, number][] = [];
+@@ -94,11 +184,17 @@ export default function GameProvider({ children }: PropsWithChildren) {
+           return;
+         }
+ 
+-        if (tiles[board[x][y]].value === tiles[board[x + 1][y]].value) {
++        if (
++          tiles[board[x][y]].value === tiles[board[x + 1][y]].value &&
++          !tiles[board[x][y]].isObstacle
++        ) {
+           return;
+         }
+ 
+-        if (tiles[board[x][y]].value === tiles[board[x][y + 1]].value) {
++        if (
++          tiles[board[x][y]].value === tiles[board[x][y + 1]].value &&
++          !tiles[board[x][y]].isObstacle
++        ) {
+           return;
+         }
+       }
+@@ -122,14 +218,25 @@ export default function GameProvider({ children }: PropsWithChildren) {
+     }
+   }, [gameState.hasChanged]);
+ 
++  const updateConfig = (config: any) => {
++    dispatch({ type: "update_config", config });
++  };
++
++  const undo = () => dispatch({ type: "undo" });
++  const redo = () => dispatch({ type: "redo" });
++
+   return (
+     <GameContext.Provider
+       value={{
+         score: gameState.score,
+         status: gameState.status,
++        challengeState: gameState.challengeState,
+         getTiles,
+         moveTiles,
+         startGame,
++        updateConfig,
++        undo,
++        redo,
+       }}
+     >
+       {children}
+diff --git a/models/tile.ts b/models/tile.ts
+index df4c620..6bbc49a 100644
+--- a/models/tile.ts
++++ b/models/tile.ts
+@@ -2,6 +2,7 @@ export type Tile = {
+   id?: string;
+   position: [number, number];
+   value: number;
++  isObstacle?: boolean;
+ };
+ 
+ export type TileMap = { [id: string]: Tile };
+diff --git a/pages/index.tsx b/pages/index.tsx
+index 75c6e8b..04d210e 100644
+--- a/pages/index.tsx
++++ b/pages/index.tsx
+@@ -2,6 +2,7 @@ import Head from "next/head";
+ import Image from "next/image";
+ import Board from "@/components/board";
+ import Score from "@/components/score";
++import ChallengeControls from "@/components/challenge-controls";
+ import styles from "@/styles/index.module.css";
+ 
+ export default function Home() {
+@@ -29,6 +30,7 @@ export default function Home() {
+       </header>
+       <main>
+         <Board />
++        <ChallengeControls />
+       </main>
+       <div>
+         <h2>🚀 Create your own game</h2>
+diff --git a/reducers/game-reducer.ts b/reducers/game-reducer.ts
+index 47d6226..1a30684 100644
+--- a/reducers/game-reducer.ts
++++ b/reducers/game-reducer.ts
+@@ -5,15 +5,16 @@ import { Tile, TileMap } from "@/models/tile";
+ 
+ type GameStatus = "ongoing" | "won" | "lost";
+ 
+-type State = {
++export type State = {
+   board: string[][];
+   tiles: TileMap;
+   tilesByIds: string[];
+   hasChanged: boolean;
+   score: number;
+   status: GameStatus;
++  challengeState?: any;
+ };
+-type Action =
++export type Action =
+   | { type: "create_tile"; tile: Tile }
+   | { type: "clean_up" }
+   | { type: "move_up" }
+@@ -21,7 +22,9 @@ type Action =
+   | { type: "move_left" }
+   | { type: "move_right" }
+   | { type: "reset_game" }
+-  | { type: "update_status"; status: GameStatus };
++  | { type: "update_status"; status: GameStatus }
++  | { type: "plugin_action"; payload: any }
++  | { type: "update_config"; config: any };
+ 
+ function createBoard() {
+   const board: string[][] = [];
+@@ -40,6 +43,15 @@ export const initialState: State = {
+   hasChanged: false,
+   score: 0,
+   status: "ongoing",
++  challengeState: {
++    config: {
++      obstacle: { enabled: false, frequency: 1 },
++      decay: { enabled: false, rate: 2 },
++      mergeLimit: { enabled: false, limit: 1 },
++      disableDirection: { enabled: false },
++      countdown: { enabled: false, duration: 60 }
++    }
++  }
+ };
+ 
+ export default function gameReducer(
+@@ -294,12 +306,29 @@ export default function gameReducer(
+       };
+     }
+     case "reset_game":
+-      return initialState;
++      return {
++        ...initialState,
++        challengeState: {
++          ...initialState.challengeState,
++          config: state.challengeState?.config || initialState.challengeState.config
++        }
++      };
+     case "update_status":
+       return {
+         ...state,
+         status: action.status,
+       };
++    case "update_config":
++      return {
++        ...state,
++        challengeState: {
++          ...state.challengeState,
++          config: {
++            ...state.challengeState?.config,
++            ...action.config
++          }
++        }
++      };
+     default:
+       return state;
+   }
+diff --git a/styles/tile.module.css b/styles/tile.module.css
+index d710fbb..9b0657c 100644
+--- a/styles/tile.module.css
++++ b/styles/tile.module.css
+@@ -70,6 +70,19 @@
+ }
+ /* -=-=-=-= END OF TEXT SIZE =-=-=-=- */
+ 
++.tile\-1 {
++  background: #333;
++  color: transparent;
++}
++.tile\-1::after {
++  content: "🪨";
++  color: white;
++  display: flex;
++  justify-content: center;
++  align-items: center;
++  height: 100%;
++}
++
+ .tile2 {
+   box-shadow:
+     0 0 30px 10px rgba(243, 215, 116, 0),

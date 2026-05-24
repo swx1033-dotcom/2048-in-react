@@ -5,15 +5,16 @@ import { Tile, TileMap } from "@/models/tile";
 
 type GameStatus = "ongoing" | "won" | "lost";
 
-type State = {
+export type State = {
   board: string[][];
   tiles: TileMap;
   tilesByIds: string[];
   hasChanged: boolean;
   score: number;
   status: GameStatus;
+  challengeState?: any;
 };
-type Action =
+export type Action =
   | { type: "create_tile"; tile: Tile }
   | { type: "clean_up" }
   | { type: "move_up" }
@@ -21,7 +22,9 @@ type Action =
   | { type: "move_left" }
   | { type: "move_right" }
   | { type: "reset_game" }
-  | { type: "update_status"; status: GameStatus };
+  | { type: "update_status"; status: GameStatus }
+  | { type: "plugin_action"; payload: any }
+  | { type: "update_config"; config: any };
 
 function createBoard() {
   const board: string[][] = [];
@@ -40,6 +43,15 @@ export const initialState: State = {
   hasChanged: false,
   score: 0,
   status: "ongoing",
+  challengeState: {
+    config: {
+      obstacle: { enabled: false, frequency: 1 },
+      decay: { enabled: false, rate: 2 },
+      mergeLimit: { enabled: false, limit: 1 },
+      disableDirection: { enabled: false },
+      countdown: { enabled: false, duration: 60 }
+    }
+  }
 };
 
 export default function gameReducer(
@@ -294,11 +306,28 @@ export default function gameReducer(
       };
     }
     case "reset_game":
-      return initialState;
+      return {
+        ...initialState,
+        challengeState: {
+          ...initialState.challengeState,
+          config: state.challengeState?.config || initialState.challengeState.config
+        }
+      };
     case "update_status":
       return {
         ...state,
         status: action.status,
+      };
+    case "update_config":
+      return {
+        ...state,
+        challengeState: {
+          ...state.challengeState,
+          config: {
+            ...state.challengeState?.config,
+            ...action.config
+          }
+        }
       };
     default:
       return state;

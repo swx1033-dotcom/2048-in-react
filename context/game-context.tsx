@@ -22,6 +22,11 @@ export const GameContext = createContext({
   moveTiles: (_: MoveDirection) => {},
   getTiles: () => [] as Tile[],
   startGame: () => {},
+  historyIndex: 0,
+  historyLength: 0,
+  previewIndex: null as number | null,
+  previewHistory: (_: number) => {},
+  confirmHistory: () => {},
 });
 
 export default function GameProvider({ children }: PropsWithChildren) {
@@ -53,7 +58,8 @@ export default function GameProvider({ children }: PropsWithChildren) {
   };
 
   const getTiles = () => {
-    return gameState.tilesByIds.map((tileId) => gameState.tiles[tileId]);
+    const activeState = gameState.previewIndex !== null ? (gameState.history[gameState.previewIndex] || gameState) : gameState;
+    return activeState.tilesByIds.map((tileId: string) => activeState.tiles[tileId]);
   };
 
   const moveTiles = useCallback(
@@ -69,11 +75,12 @@ export default function GameProvider({ children }: PropsWithChildren) {
     dispatch({ type: "reset_game" });
     dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
     dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
+    dispatch({ type: "save_snapshot" });
   };
 
   const checkGameState = () => {
     const isWon =
-      Object.values(gameState.tiles).filter((t) => t.value === gameWinTileValue)
+      (Object.values(gameState.tiles) as Tile[]).filter((t: Tile) => t.value === gameWinTileValue)
         .length > 0;
 
     if (isWon) {
@@ -112,6 +119,7 @@ export default function GameProvider({ children }: PropsWithChildren) {
       setTimeout(() => {
         dispatch({ type: "clean_up" });
         appendRandomTile();
+        dispatch({ type: "save_snapshot" });
       }, mergeAnimationDuration);
     }
   }, [gameState.hasChanged]);
@@ -122,14 +130,22 @@ export default function GameProvider({ children }: PropsWithChildren) {
     }
   }, [gameState.hasChanged]);
 
+  const previewHistory = (index: number) => dispatch({ type: "preview_history", index });
+  const confirmHistory = () => dispatch({ type: "confirm_history" });
+
   return (
     <GameContext.Provider
       value={{
-        score: gameState.score,
-        status: gameState.status,
+        score: gameState.previewIndex !== null ? gameState.history[gameState.previewIndex]?.score ?? gameState.score : gameState.score,
+        status: gameState.previewIndex !== null ? gameState.history[gameState.previewIndex]?.status ?? gameState.status : gameState.status,
         getTiles,
         moveTiles,
         startGame,
+        historyIndex: gameState.historyIndex,
+        historyLength: gameState.history.length,
+        previewIndex: gameState.previewIndex,
+        previewHistory,
+        confirmHistory,
       }}
     >
       {children}

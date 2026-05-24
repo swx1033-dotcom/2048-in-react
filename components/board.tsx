@@ -5,6 +5,7 @@ import Tile from "./tile";
 import { GameContext } from "@/context/game-context";
 import MobileSwiper, { SwipeInput } from "./mobile-swiper";
 import Splash from "./splash";
+import TimeTravel from "./time-travel";
 
 export default function Board() {
   const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
@@ -92,6 +93,7 @@ export default function Board() {
         <div className={styles.tiles}>{renderTiles()}</div>
         <div className={styles.grid}>{renderGrid()}</div>
       </div>
+      <TimeTravel />
     </MobileSwiper>
   );
 }

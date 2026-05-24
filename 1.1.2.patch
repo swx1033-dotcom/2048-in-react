@@ -1,0 +1,238 @@
+diff --git a/components/board.tsx b/components/board.tsx
+index 57e2531..124f1bf 100644
+--- a/components/board.tsx
++++ b/components/board.tsx
+@@ -5,6 +5,7 @@ import Tile from "./tile";
+ import { GameContext } from "@/context/game-context";
+ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
+ import Splash from "./splash";
++import TimeTravel from "./time-travel";
+ 
+ export default function Board() {
+   const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
+@@ -92,6 +93,7 @@ export default function Board() {
+         <div className={styles.tiles}>{renderTiles()}</div>
+         <div className={styles.grid}>{renderGrid()}</div>
+       </div>
++      <TimeTravel />
+     </MobileSwiper>
+   );
+ }
+diff --git a/components/tile.tsx b/components/tile.tsx
+index 39964d5..e754448 100644
+--- a/components/tile.tsx
++++ b/components/tile.tsx
+@@ -1,5 +1,6 @@
+-import { useEffect, useState } from "react";
++import { useContext, useEffect, useState } from "react";
+ import { useMediaQuery } from "react-responsive";
++import { GameContext } from "@/context/game-context";
+ import {
+   containerWidthMobile,
+   containerWidthDesktop,
+@@ -19,22 +20,25 @@ export default function Tile({ position, value }: TileProps) {
+   const [scale, setScale] = useState(1);
+   const previousValue = usePreviousProps<number>(value);
+   const hasChanged = previousValue !== value;
++  const { previewIndex } = useContext(GameContext);
++  const isTimeTraveling = previewIndex !== null;
+ 
+   const positionToPixels = (position: number) =>
+     (position / tileCountPerDimension) * containerWidth;
+ 
+   useEffect(() => {
+-    if (hasChanged) {
++    if (hasChanged && !isTimeTraveling) {
+       setScale(1.1);
+       setTimeout(() => setScale(1), mergeAnimationDuration);
+     }
+-  }, [hasChanged]);
++  }, [hasChanged, isTimeTraveling]);
+ 
+   const style = {
+     left: positionToPixels(position[0]),
+     top: positionToPixels(position[1]),
+     transform: `scale(${scale})`,
+     zIndex: value,
++    transition: isTimeTraveling ? "none" : undefined,
+   };
+ 
+   return (
+diff --git a/context/game-context.tsx b/context/game-context.tsx
+index 0b93edc..85a3aca 100644
+--- a/context/game-context.tsx
++++ b/context/game-context.tsx
+@@ -22,6 +22,11 @@ export const GameContext = createContext({
+   moveTiles: (_: MoveDirection) => {},
+   getTiles: () => [] as Tile[],
+   startGame: () => {},
++  historyIndex: 0,
++  historyLength: 0,
++  previewIndex: null as number | null,
++  previewHistory: (_: number) => {},
++  confirmHistory: () => {},
+ });
+ 
+ export default function GameProvider({ children }: PropsWithChildren) {
+@@ -53,7 +58,8 @@ export default function GameProvider({ children }: PropsWithChildren) {
+   };
+ 
+   const getTiles = () => {
+-    return gameState.tilesByIds.map((tileId) => gameState.tiles[tileId]);
++    const activeState = gameState.previewIndex !== null ? (gameState.history[gameState.previewIndex] || gameState) : gameState;
++    return activeState.tilesByIds.map((tileId: string) => activeState.tiles[tileId]);
+   };
+ 
+   const moveTiles = useCallback(
+@@ -69,11 +75,12 @@ export default function GameProvider({ children }: PropsWithChildren) {
+     dispatch({ type: "reset_game" });
+     dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
+     dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
++    dispatch({ type: "save_snapshot" });
+   };
+ 
+   const checkGameState = () => {
+     const isWon =
+-      Object.values(gameState.tiles).filter((t) => t.value === gameWinTileValue)
++      (Object.values(gameState.tiles) as Tile[]).filter((t: Tile) => t.value === gameWinTileValue)
+         .length > 0;
+ 
+     if (isWon) {
+@@ -112,6 +119,7 @@ export default function GameProvider({ children }: PropsWithChildren) {
+       setTimeout(() => {
+         dispatch({ type: "clean_up" });
+         appendRandomTile();
++        dispatch({ type: "save_snapshot" });
+       }, mergeAnimationDuration);
+     }
+   }, [gameState.hasChanged]);
+@@ -122,14 +130,22 @@ export default function GameProvider({ children }: PropsWithChildren) {
+     }
+   }, [gameState.hasChanged]);
+ 
++  const previewHistory = (index: number) => dispatch({ type: "preview_history", index });
++  const confirmHistory = () => dispatch({ type: "confirm_history" });
++
+   return (
+     <GameContext.Provider
+       value={{
+-        score: gameState.score,
+-        status: gameState.status,
++        score: gameState.previewIndex !== null ? gameState.history[gameState.previewIndex]?.score ?? gameState.score : gameState.score,
++        status: gameState.previewIndex !== null ? gameState.history[gameState.previewIndex]?.status ?? gameState.status : gameState.status,
+         getTiles,
+         moveTiles,
+         startGame,
++        historyIndex: gameState.historyIndex,
++        historyLength: gameState.history.length,
++        previewIndex: gameState.previewIndex,
++        previewHistory,
++        confirmHistory,
+       }}
+     >
+       {children}
+diff --git a/reducers/game-reducer.ts b/reducers/game-reducer.ts
+index 47d6226..8a75746 100644
+--- a/reducers/game-reducer.ts
++++ b/reducers/game-reducer.ts
+@@ -5,13 +5,24 @@ import { Tile, TileMap } from "@/models/tile";
+ 
+ type GameStatus = "ongoing" | "won" | "lost";
+ 
+-type State = {
++export type StateSnapshot = {
++  board: string[][];
++  tiles: TileMap;
++  tilesByIds: string[];
++  score: number;
++  status: GameStatus;
++};
++
++export type State = {
+   board: string[][];
+   tiles: TileMap;
+   tilesByIds: string[];
+   hasChanged: boolean;
+   score: number;
+   status: GameStatus;
++  history: StateSnapshot[];
++  historyIndex: number;
++  previewIndex: number | null;
+ };
+ type Action =
+   | { type: "create_tile"; tile: Tile }
+@@ -21,7 +32,10 @@ type Action =
+   | { type: "move_left" }
+   | { type: "move_right" }
+   | { type: "reset_game" }
+-  | { type: "update_status"; status: GameStatus };
++  | { type: "update_status"; status: GameStatus }
++  | { type: "save_snapshot" }
++  | { type: "preview_history"; index: number }
++  | { type: "confirm_history" };
+ 
+ function createBoard() {
+   const board: string[][] = [];
+@@ -40,6 +54,9 @@ export const initialState: State = {
+   hasChanged: false,
+   score: 0,
+   status: "ongoing",
++  history: [],
++  historyIndex: 0,
++  previewIndex: null,
+ };
+ 
+ export default function gameReducer(
+@@ -50,7 +67,7 @@ export default function gameReducer(
+     case "clean_up": {
+       const flattenBoard = flattenDeep(state.board);
+       const newTiles: TileMap = flattenBoard.reduce(
+-        (result, tileId: string) => {
++        (result: TileMap, tileId: string) => {
+           if (isNil(tileId)) {
+             return result;
+           }
+@@ -300,6 +317,43 @@ export default function gameReducer(
+         ...state,
+         status: action.status,
+       };
++    case "save_snapshot": {
++      const snapshot: StateSnapshot = {
++        board: state.board,
++        tiles: state.tiles,
++        tilesByIds: state.tilesByIds,
++        score: state.score,
++        status: state.status,
++      };
++      // Truncate history if we travelled back in time
++      let newHistory = state.history.slice(0, state.historyIndex + 1);
++      newHistory.push(snapshot);
++      if (newHistory.length > 50) {
++        newHistory.shift();
++      }
++      return {
++        ...state,
++        history: newHistory,
++        historyIndex: newHistory.length - 1,
++      };
++    }
++    case "preview_history": {
++      return {
++        ...state,
++        previewIndex: action.index,
++      };
++    }
++    case "confirm_history": {
++      if (state.previewIndex === null) return state;
++      const snapshot = state.history[state.previewIndex];
++      return {
++        ...state,
++        ...snapshot,
++        hasChanged: false,
++        historyIndex: state.previewIndex,
++        previewIndex: null,
++      };
++    }
+     default:
+       return state;
+   }

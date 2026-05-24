@@ -5,13 +5,24 @@ import { Tile, TileMap } from "@/models/tile";
 
 type GameStatus = "ongoing" | "won" | "lost";
 
-type State = {
+export type StateSnapshot = {
+  board: string[][];
+  tiles: TileMap;
+  tilesByIds: string[];
+  score: number;
+  status: GameStatus;
+};
+
+export type State = {
   board: string[][];
   tiles: TileMap;
   tilesByIds: string[];
   hasChanged: boolean;
   score: number;
   status: GameStatus;
+  history: StateSnapshot[];
+  historyIndex: number;
+  previewIndex: number | null;
 };
 type Action =
   | { type: "create_tile"; tile: Tile }
@@ -21,7 +32,10 @@ type Action =
   | { type: "move_left" }
   | { type: "move_right" }
   | { type: "reset_game" }
-  | { type: "update_status"; status: GameStatus };
+  | { type: "update_status"; status: GameStatus }
+  | { type: "save_snapshot" }
+  | { type: "preview_history"; index: number }
+  | { type: "confirm_history" };
 
 function createBoard() {
   const board: string[][] = [];
@@ -40,6 +54,9 @@ export const initialState: State = {
   hasChanged: false,
   score: 0,
   status: "ongoing",
+  history: [],
+  historyIndex: 0,
+  previewIndex: null,
 };
 
 export default function gameReducer(
@@ -50,7 +67,7 @@ export default function gameReducer(
     case "clean_up": {
       const flattenBoard = flattenDeep(state.board);
       const newTiles: TileMap = flattenBoard.reduce(
-        (result, tileId: string) => {
+        (result: TileMap, tileId: string) => {
           if (isNil(tileId)) {
             return result;
           }
@@ -300,6 +317,43 @@ export default function gameReducer(
         ...state,
         status: action.status,
       };
+    case "save_snapshot": {
+      const snapshot: StateSnapshot = {
+        board: state.board,
+        tiles: state.tiles,
+        tilesByIds: state.tilesByIds,
+        score: state.score,
+        status: state.status,
+      };
+      // Truncate history if we travelled back in time
+      let newHistory = state.history.slice(0, state.historyIndex + 1);
+      newHistory.push(snapshot);
+      if (newHistory.length > 50) {
+        newHistory.shift();
+      }
+      return {
+        ...state,
+        history: newHistory,
+        historyIndex: newHistory.length - 1,
+      };
+    }
+    case "preview_history": {
+      return {
+        ...state,
+        previewIndex: action.index,
+      };
+    }
+    case "confirm_history": {
+      if (state.previewIndex === null) return state;
+      const snapshot = state.history[state.previewIndex];
+      return {
+        ...state,
+        ...snapshot,
+        hasChanged: false,
+        historyIndex: state.previewIndex,
+        previewIndex: null,
+      };
+    }
     default:
       return state;
   }

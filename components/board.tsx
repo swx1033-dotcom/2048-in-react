@@ -7,30 +7,37 @@ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
 import Splash from "./splash";
 
 export default function Board() {
-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
+  const { getTiles, moveTiles, startGame, status, undo } = useContext(GameContext);
   const initialized = useRef(false);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // disables page scrolling with keyboard arrows
-      e.preventDefault();
+      if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ") {
+        e.preventDefault();
+        undo();
+        return;
+      }
 
       switch (e.code) {
         case "ArrowUp":
+          e.preventDefault();
           moveTiles("move_up");
           break;
         case "ArrowDown":
+          e.preventDefault();
           moveTiles("move_down");
           break;
         case "ArrowLeft":
+          e.preventDefault();
           moveTiles("move_left");
           break;
         case "ArrowRight":
+          e.preventDefault();
           moveTiles("move_right");
           break;
       }
     },
-    [moveTiles],
+    [moveTiles, undo],
   );
 
   const handleSwipe = useCallback(

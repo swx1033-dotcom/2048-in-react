@@ -3,132 +3,103 @@ import {
   createContext,
   useCallback,
   useEffect,
+  useMemo,
   useReducer,
+  useRef,
 } from "react";
-import { isNil, throttle } from "lodash";
-import {
-  gameWinTileValue,
-  mergeAnimationDuration,
-  tileCountPerDimension,
-} from "@/constants";
+import { throttle } from "lodash";
+import { mergeAnimationDuration } from "@/constants";
 import { Tile } from "@/models/tile";
 import gameReducer, { initialState } from "@/reducers/game-reducer";
 
 type MoveDirection = "move_up" | "move_down" | "move_left" | "move_right";
 
-export const GameContext = createContext({
+type GameContextValue = {
+  score: number;
+  status: "ongoing" | "won" | "lost";
+  canUndo: boolean;
+  moveTiles: (_: MoveDirection) => void;
+  undo: () => void;
+  getTiles: () => Tile[];
+  startGame: () => void;
+};
+
+export const GameContext = createContext<GameContextValue>({
   score: 0,
   status: "ongoing",
+  canUndo: false,
   moveTiles: (_: MoveDirection) => {},
-  getTiles: () => [] as Tile[],
+  undo: () => {},
+  getTiles: () => [],
   startGame: () => {},
 });
 
 export default function GameProvider({ children }: PropsWithChildren) {
   const [gameState, dispatch] = useReducer(gameReducer, initialState);
-
-  const getEmptyCells = () => {
-    const results: [number, number][] = [];
-
-    for (let x = 0; x < tileCountPerDimension; x++) {
-      for (let y = 0; y < tileCountPerDimension; y++) {
-        if (isNil(gameState.board[y][x])) {
-          results.push([x, y]);
-        }
-      }
-    }
-    return results;
-  };
-
-  const appendRandomTile = () => {
-    const emptyCells = getEmptyCells();
-    if (emptyCells.length > 0) {
-      const cellIndex = Math.floor(Math.random() * emptyCells.length);
-      const newTile = {
-        position: emptyCells[cellIndex],
-        value: 2,
-      };
-      dispatch({ type: "create_tile", tile: newTile });
-    }
-  };
+  const finalizeMoveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
 
   const getTiles = () => {
-    return gameState.tilesByIds.map((tileId) => gameState.tiles[tileId]);
+    return gameState.tilesByIds.map((tileId: string) => gameState.tiles[tileId]);
   };
 
-  const moveTiles = useCallback(
-    throttle(
-      (type: MoveDirection) => dispatch({ type }),
-      mergeAnimationDuration * 1.05,
-      { trailing: false },
-    ),
+  const moveTiles = useMemo(
+    () =>
+      throttle(
+        (type: MoveDirection) => dispatch({ type }),
+        mergeAnimationDuration * 1.05,
+        { trailing: false },
+      ),
     [dispatch],
   );
 
-  const startGame = () => {
-    dispatch({ type: "reset_game" });
-    dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
-    dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
-  };
-
-  const checkGameState = () => {
-    const isWon =
-      Object.values(gameState.tiles).filter((t) => t.value === gameWinTileValue)
-        .length > 0;
-
-    if (isWon) {
-      dispatch({ type: "update_status", status: "won" });
-      return;
+  const clearPendingFinalizeMove = useCallback(() => {
+    if (finalizeMoveTimeoutRef.current) {
+      clearTimeout(finalizeMoveTimeoutRef.current);
+      finalizeMoveTimeoutRef.current = undefined;
     }
+  }, []);
 
-    const { tiles, board } = gameState;
+  const undo = useCallback(() => {
+    clearPendingFinalizeMove();
+    dispatch({ type: "undo" });
+  }, [clearPendingFinalizeMove]);
 
-    const maxIndex = tileCountPerDimension - 1;
-    for (let x = 0; x < maxIndex; x += 1) {
-      for (let y = 0; y < maxIndex; y += 1) {
-        if (
-          isNil(gameState.board[x][y]) ||
-          isNil(gameState.board[x + 1][y]) ||
-          isNil(gameState.board[x][y + 1])
-        ) {
-          return;
-        }
-
-        if (tiles[board[x][y]].value === tiles[board[x + 1][y]].value) {
-          return;
-        }
-
-        if (tiles[board[x][y]].value === tiles[board[x][y + 1]].value) {
-          return;
-        }
-      }
-    }
-
-    dispatch({ type: "update_status", status: "lost" });
-  };
-
-  useEffect(() => {
-    if (gameState.hasChanged) {
-      setTimeout(() => {
-        dispatch({ type: "clean_up" });
-        appendRandomTile();
-      }, mergeAnimationDuration);
-    }
-  }, [gameState.hasChanged]);
+  const startGame = useCallback(() => {
+    clearPendingFinalizeMove();
+    dispatch({ type: "start_game" });
+  }, [clearPendingFinalizeMove]);
 
   useEffect(() => {
     if (!gameState.hasChanged) {
-      checkGameState();
+      return;
     }
-  }, [gameState.hasChanged]);
+
+    finalizeMoveTimeoutRef.current = setTimeout(() => {
+      dispatch({ type: "finalize_move" });
+      finalizeMoveTimeoutRef.current = undefined;
+    }, mergeAnimationDuration);
+
+    return clearPendingFinalizeMove;
+  }, [clearPendingFinalizeMove, gameState.hasChanged]);
+
+  useEffect(() => {
+    return () => {
+      clearPendingFinalizeMove();
+      moveTiles.cancel();
+    };
+  }, [clearPendingFinalizeMove, moveTiles]);
 
   return (
     <GameContext.Provider
       value={{
         score: gameState.score,
         status: gameState.status,
+        canUndo: gameState.hasChanged || gameState.history.length > 1,
         getTiles,
         moveTiles,
+        undo,
         startGame,
       }}
     >

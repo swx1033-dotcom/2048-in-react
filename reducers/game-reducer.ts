@@ -1,26 +1,34 @@
 import { flattenDeep, isEqual, isNil } from "lodash";
 import { uid } from "uid";
-import { tileCountPerDimension } from "@/constants";
+import { gameWinTileValue, tileCountPerDimension } from "@/constants";
 import { Tile, TileMap } from "@/models/tile";
 
 type GameStatus = "ongoing" | "won" | "lost";
 
-type State = {
+type Snapshot = {
   board: string[][];
   tiles: TileMap;
   tilesByIds: string[];
-  hasChanged: boolean;
   score: number;
   status: GameStatus;
 };
+
+type State = Snapshot & {
+  hasChanged: boolean;
+  history: Snapshot[];
+};
+
 type Action =
   | { type: "create_tile"; tile: Tile }
   | { type: "clean_up" }
+  | { type: "finalize_move" }
   | { type: "move_up" }
   | { type: "move_down" }
   | { type: "move_left" }
   | { type: "move_right" }
   | { type: "reset_game" }
+  | { type: "start_game" }
+  | { type: "undo" }
   | { type: "update_status"; status: GameStatus };
 
 function createBoard() {
@@ -33,13 +41,178 @@ function createBoard() {
   return board;
 }
 
-export const initialState: State = {
+function cloneBoard(board: string[][]) {
+  return board.map((row) => [...row]);
+}
+
+function cloneTiles(tiles: TileMap) {
+  return Object.values(tiles).reduce<TileMap>(
+    (result, tile) => ({
+      ...result,
+      [tile.id as string]: {
+        ...tile,
+        position: [...tile.position] as [number, number],
+      },
+    }),
+    {},
+  );
+}
+
+function createSnapshot({ board, tiles, tilesByIds, score, status }: Snapshot): Snapshot {
+  return {
+    board: cloneBoard(board),
+    tiles: cloneTiles(tiles),
+    tilesByIds: [...tilesByIds],
+    score,
+    status,
+  };
+}
+
+function restoreSnapshot(snapshot: Snapshot, history: Snapshot[]): State {
+  const restoredSnapshot = createSnapshot(snapshot);
+
+  return {
+    ...restoredSnapshot,
+    hasChanged: false,
+    history,
+  };
+}
+
+function appendTile(snapshot: Snapshot, tile: Tile): Snapshot {
+  const tileId = uid();
+  const [x, y] = tile.position;
+  const board = cloneBoard(snapshot.board);
+  board[y][x] = tileId;
+
+  return {
+    ...snapshot,
+    board,
+    tiles: {
+      ...snapshot.tiles,
+      [tileId]: {
+        id: tileId,
+        ...tile,
+      },
+    },
+    tilesByIds: [...snapshot.tilesByIds, tileId],
+  };
+}
+
+function getEmptyCells(board: string[][]) {
+  const results: [number, number][] = [];
+
+  for (let x = 0; x < tileCountPerDimension; x += 1) {
+    for (let y = 0; y < tileCountPerDimension; y += 1) {
+      if (isNil(board[y][x])) {
+        results.push([x, y]);
+      }
+    }
+  }
+
+  return results;
+}
+
+function getStatus(board: string[][], tiles: TileMap): GameStatus {
+  if (Object.values(tiles).some((tile) => tile.value === gameWinTileValue)) {
+    return "won";
+  }
+
+  let hasEmptyCells = false;
+
+  for (let y = 0; y < tileCountPerDimension; y += 1) {
+    for (let x = 0; x < tileCountPerDimension; x += 1) {
+      const tileId = board[y][x];
+
+      if (isNil(tileId)) {
+        hasEmptyCells = true;
+        continue;
+      }
+
+      const rightTileId = x < tileCountPerDimension - 1 ? board[y][x + 1] : undefined;
+      const bottomTileId =
+        y < tileCountPerDimension - 1 ? board[y + 1][x] : undefined;
+
+      if (
+        typeof rightTileId === "string" &&
+        tiles[rightTileId].value === tiles[tileId].value
+      ) {
+        return "ongoing";
+      }
+
+      if (
+        typeof bottomTileId === "string" &&
+        tiles[bottomTileId].value === tiles[tileId].value
+      ) {
+        return "ongoing";
+      }
+    }
+  }
+
+  return hasEmptyCells ? "ongoing" : "lost";
+}
+
+function cleanUpBoard(state: State): Snapshot {
+  const flattenBoard = flattenDeep(state.board) as Array<string | undefined>;
+  const tiles = flattenBoard.reduce<TileMap>(
+    (result: TileMap, tileId: string | undefined) => {
+      if (typeof tileId !== "string") {
+        return result;
+      }
+
+      return {
+        ...result,
+        [tileId]: state.tiles[tileId],
+      };
+    },
+    {},
+  );
+
+  return {
+    board: cloneBoard(state.board),
+    tiles,
+    tilesByIds: Object.keys(tiles),
+    score: state.score,
+    status: state.status,
+  };
+}
+
+function createStartedState(): State {
+  const startedState = appendTile(
+    appendTile(
+      {
+        board: createBoard(),
+        tiles: {},
+        tilesByIds: [],
+        score: 0,
+        status: "ongoing",
+      },
+      { position: [0, 1], value: 2 },
+    ),
+    { position: [0, 2], value: 2 },
+  );
+  const snapshot = createSnapshot(startedState);
+
+  return {
+    ...snapshot,
+    hasChanged: false,
+    history: [snapshot],
+  };
+}
+
+const emptySnapshot: Snapshot = {
   board: createBoard(),
   tiles: {},
   tilesByIds: [],
-  hasChanged: false,
   score: 0,
   status: "ongoing",
+};
+
+const initialSnapshot = createSnapshot(emptySnapshot);
+
+export const initialState: State = {
+  ...initialSnapshot,
+  hasChanged: false,
+  history: [initialSnapshot],
 };
 
 export default function gameReducer(
@@ -48,45 +221,43 @@ export default function gameReducer(
 ) {
   switch (action.type) {
     case "clean_up": {
-      const flattenBoard = flattenDeep(state.board);
-      const newTiles: TileMap = flattenBoard.reduce(
-        (result, tileId: string) => {
-          if (isNil(tileId)) {
-            return result;
-          }
-
-          return {
-            ...result,
-            [tileId]: state.tiles[tileId],
-          };
-        },
-        {},
-      );
+      const cleanedState = cleanUpBoard(state);
 
       return {
         ...state,
-        tiles: newTiles,
-        tilesByIds: Object.keys(newTiles),
+        ...cleanedState,
         hasChanged: false,
       };
     }
     case "create_tile": {
-      const tileId = uid();
-      const [x, y] = action.tile.position;
-      const newBoard = JSON.parse(JSON.stringify(state.board));
-      newBoard[y][x] = tileId;
+      const nextState = appendTile(state, action.tile);
 
       return {
         ...state,
-        board: newBoard,
-        tiles: {
-          ...state.tiles,
-          [tileId]: {
-            id: tileId,
-            ...action.tile,
-          },
-        },
-        tilesByIds: [...state.tilesByIds, tileId],
+        ...nextState,
+      };
+    }
+    case "finalize_move": {
+      const cleanedState = cleanUpBoard(state);
+      const emptyCells = getEmptyCells(cleanedState.board);
+      const stateWithNewTile =
+        emptyCells.length > 0
+          ? appendTile(cleanedState, {
+              position:
+                emptyCells[Math.floor(Math.random() * emptyCells.length)],
+              value: 2,
+            })
+          : cleanedState;
+      const status = getStatus(stateWithNewTile.board, stateWithNewTile.tiles);
+      const snapshot = createSnapshot({
+        ...stateWithNewTile,
+        status,
+      });
+
+      return {
+        ...snapshot,
+        hasChanged: false,
+        history: [...state.history, snapshot],
       };
     }
     case "move_up": {
@@ -295,6 +466,24 @@ export default function gameReducer(
     }
     case "reset_game":
       return initialState;
+    case "start_game":
+      return createStartedState();
+    case "undo": {
+      if (state.hasChanged) {
+        return restoreSnapshot(
+          state.history[state.history.length - 1],
+          [...state.history],
+        );
+      }
+
+      if (state.history.length <= 1) {
+        return state;
+      }
+
+      const history = state.history.slice(0, -1);
+
+      return restoreSnapshot(history[history.length - 1], history);
+    }
     case "update_status":
       return {
         ...state,

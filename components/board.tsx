@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useRef } from "react";
+import { CSSProperties, useCallback, useContext, useEffect, useRef } from "react";
 import { Tile as TileModel } from "@/models/tile";
 import styles from "@/styles/board.module.css";
 import Tile from "./tile";
@@ -7,12 +7,15 @@ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
 import Splash from "./splash";
 
 export default function Board() {
-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
+  const { getTiles, moveTiles, initializeGame, status, dimension } = useContext(GameContext);
   const initialized = useRef(false);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // disables page scrolling with keyboard arrows
+      if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
+        return;
+      }
+
       e.preventDefault();
 
       switch (e.code) {
@@ -41,12 +44,13 @@ export default function Board() {
         } else {
           moveTiles("move_left");
         }
+        return;
+      }
+
+      if (deltaY > 0) {
+        moveTiles("move_down");
       } else {
-        if (deltaY > 0) {
-          moveTiles("move_down");
-        } else {
-          moveTiles("move_up");
-        }
+        moveTiles("move_up");
       }
     },
     [moveTiles],
@@ -54,9 +58,8 @@ export default function Board() {
 
   const renderGrid = () => {
     const cells: JSX.Element[] = [];
-    const totalCellsCount = 16;
 
-    for (let index = 0; index < totalCellsCount; index += 1) {
+    for (let index = 0; index < dimension * dimension; index += 1) {
       cells.push(<div className={styles.cell} key={index} />);
     }
 
@@ -70,11 +73,11 @@ export default function Board() {
   };
 
   useEffect(() => {
-    if (initialized.current === false) {
-      startGame();
+    if (!initialized.current) {
+      initializeGame();
       initialized.current = true;
     }
-  }, [startGame]);
+  }, [initializeGame]);
 
   useEffect(() => {
     window.addEventListener("keydown", handleKeyDown);
@@ -84,9 +87,13 @@ export default function Board() {
     };
   }, [handleKeyDown]);
 
+  const boardStyle = {
+    "--grid-size": dimension,
+  } as CSSProperties;
+
   return (
     <MobileSwiper onSwipe={handleSwipe}>
-      <div className={styles.board}>
+      <div className={styles.board} style={boardStyle}>
         {status === "won" && <Splash heading="You won!" type="won" />}
         {status === "lost" && <Splash heading="You lost!" />}
         <div className={styles.tiles}>{renderTiles()}</div>

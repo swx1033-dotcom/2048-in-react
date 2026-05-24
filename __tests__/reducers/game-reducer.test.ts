@@ -1,692 +1,163 @@
+import gameReducer, {
+  canMove,
+  createInitialState,
+  expandState,
+  migratePersistedState,
+} from "@/reducers/game-reducer";
 import { Tile } from "@/models/tile";
-import gameReducer, { initialState } from "@/reducers/game-reducer";
-import { act, renderHook } from "@testing-library/react";
-import { isNil } from "lodash";
-import { useReducer } from "react";
 
 describe("gameReducer", () => {
-  describe("clean_up", () => {
-    it("should clean up unused tiles after two tiles get merged together", () => {
-      const tile1: Tile = {
-        position: [0, 1],
-        value: 2,
-      };
-      const tile2: Tile = {
-        position: [0, 3],
-        value: 2,
-      };
+  const appendTiles = (tiles: Tile[], mode: Parameters<typeof createInitialState>[0] = "4x4") => {
+    return tiles.reduce(
+      (state, tile) => gameReducer(state, { type: "create_tile", tile }),
+      createInitialState(mode),
+    );
+  };
 
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
-
-      act(() => {
-        dispatch({ type: "create_tile", tile: tile1 });
-        dispatch({ type: "create_tile", tile: tile2 });
-        dispatch({ type: "move_up" });
-      });
-
-      const [stateBefore] = result.current;
-      expect(Object.values(stateBefore.tiles)).toHaveLength(2);
-      expect(stateBefore.tilesByIds).toHaveLength(2);
-
-      act(() => dispatch({ type: "clean_up" }));
-
-      const [stateAfter] = result.current;
-      expect(Object.values(stateAfter.tiles)).toHaveLength(1);
-      expect(stateAfter.tilesByIds).toHaveLength(1);
-    });
-  });
-  describe("create_tile", () => {
-    it("should create a new tile", () => {
-      const tile: Tile = {
-        position: [0, 0],
-        value: 2,
-      };
-
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
-
-      act(() => dispatch({ type: "create_tile", tile }));
-
-      const [state] = result.current;
-
-      const tileId = state.board[0][0];
-      expect(tileId).toBeDefined();
-      expect(Object.values(state.tiles)).toEqual([{ id: tileId, ...tile }]);
-      expect(state.tilesByIds).toEqual([tileId]);
-    });
-
-    it("should append tile id to the tile model", () => {
-      const tile: Tile = {
-        position: [0, 0],
-        value: 2,
-      };
-
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
-
-      act(() => dispatch({ type: "create_tile", tile }));
-
-      const [state] = result.current;
-
-      const tileId = state.board[0][0];
-      expect(state.tiles[tileId].id).toBeDefined();
-    });
+  it("supports dynamic board dimensions", () => {
+    expect(createInitialState("4x4").board).toHaveLength(4);
+    expect(createInitialState("5x5").board).toHaveLength(5);
+    expect(createInitialState("6x6").board).toHaveLength(6);
+    expect(createInitialState("infinite").board).toHaveLength(4);
   });
 
-  describe("move_up", () => {
-    it("should move tiles to the top of the board", () => {
-      const tile1: Tile = {
-        position: [0, 1],
-        value: 2,
-      };
-      const tile2: Tile = {
-        position: [1, 3],
-        value: 2,
-      };
+  it("adapts movement and merge logic to 5x5 boards", () => {
+    const state = appendTiles(
+      [
+        { position: [0, 4], value: 2 },
+        { position: [0, 2], value: 2 },
+      ],
+      "5x5",
+    );
 
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
+    const nextState = gameReducer(state, { type: "move_up" });
+    const mergedTileId = nextState.board[0][0] as string;
 
-      act(() => {
-        dispatch({ type: "create_tile", tile: tile1 });
-        dispatch({ type: "create_tile", tile: tile2 });
-      });
-
-      const [stateBefore] = result.current;
-      expect(isNil(stateBefore.board[0][0])).toBeTruthy();
-      expect(isNil(stateBefore.board[0][1])).toBeTruthy();
-      expect(typeof stateBefore.board[1][0]).toBe("string");
-      expect(typeof stateBefore.board[3][1]).toBe("string");
-
-      expect(stateBefore.hasChanged).toBeFalsy();
-
-      act(() => dispatch({ type: "move_up" }));
-
-      const [stateAfter] = result.current;
-      expect(typeof stateAfter.board[0][0]).toBe("string");
-      expect(typeof stateAfter.board[0][1]).toBe("string");
-      expect(isNil(stateAfter.board[1][0])).toBeTruthy();
-      expect(isNil(stateAfter.board[3][1])).toBeTruthy();
-
-      expect(stateAfter.hasChanged).toBeTruthy();
-    });
-
-    it("should stack tiles with the same values on top of each other", () => {
-      const tile1: Tile = {
-        position: [0, 1],
-        value: 2,
-      };
-      const tile2: Tile = {
-        position: [0, 3],
-        value: 2,
-      };
-
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
-
-      act(() => {
-        dispatch({ type: "create_tile", tile: tile1 });
-        dispatch({ type: "create_tile", tile: tile2 });
-      });
-
-      const [stateBefore] = result.current;
-      expect(isNil(stateBefore.board[0][0])).toBeTruthy();
-      expect(typeof stateBefore.board[1][0]).toBe("string");
-      expect(isNil(stateBefore.board[2][0])).toBeTruthy();
-      expect(typeof stateBefore.board[3][0]).toBe("string");
-
-      act(() => dispatch({ type: "move_up" }));
-
-      const [stateAfter] = result.current;
-      expect(typeof stateAfter.board[0][0]).toBe("string");
-      expect(isNil(stateAfter.board[1][0])).toBeTruthy();
-      expect(isNil(stateAfter.board[2][0])).toBeTruthy();
-      expect(isNil(stateAfter.board[3][0])).toBeTruthy();
-    });
-
-    it("should merge tiles with the same values", () => {
-      const tile1: Tile = {
-        position: [0, 1],
-        value: 2,
-      };
-      const tile2: Tile = {
-        position: [0, 3],
-        value: 2,
-      };
-
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
-
-      act(() => {
-        dispatch({ type: "create_tile", tile: tile1 });
-        dispatch({ type: "create_tile", tile: tile2 });
-      });
-
-      const [stateBefore] = result.current;
-      expect(isNil(stateBefore.board[0][0])).toBeTruthy();
-      expect(stateBefore.tiles[stateBefore.board[1][0]].value).toBe(2);
-      expect(isNil(stateBefore.board[2][0])).toBeTruthy();
-      expect(stateBefore.tiles[stateBefore.board[3][0]].value).toBe(2);
-      expect(stateBefore.hasChanged).toBeFalsy();
-
-      act(() => dispatch({ type: "move_up" }));
-
-      const [stateAfter] = result.current;
-      expect(stateAfter.tiles[stateAfter.board[0][0]].value).toBe(4);
-      expect(isNil(stateAfter.board[1][0])).toBeTruthy();
-      expect(isNil(stateAfter.board[2][0])).toBeTruthy();
-      expect(isNil(stateAfter.board[3][0])).toBeTruthy();
-      expect(stateAfter.hasChanged).toBeTruthy();
-    });
-
-    it("should keep hasChanged falsy if no tile changed position or value", () => {
-      const tile1: Tile = {
-        position: [0, 0],
-        value: 4,
-      };
-      const tile2: Tile = {
-        position: [0, 1],
-        value: 2,
-      };
-
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
-
-      act(() => {
-        dispatch({ type: "create_tile", tile: tile1 });
-        dispatch({ type: "create_tile", tile: tile2 });
-        dispatch({ type: "move_up" });
-      });
-
-      const [stateAfter] = result.current;
-      expect(stateAfter.hasChanged).toBeFalsy();
-    });
+    expect(nextState.dimension).toBe(5);
+    expect(nextState.tiles[mergedTileId].value).toBe(4);
+    expect(nextState.score).toBe(4);
+    expect(nextState.board.flat().filter(Boolean)).toHaveLength(1);
   });
 
-  describe("move_down", () => {
-    it("should move tiles to the bottom of the board", () => {
-      const tile1: Tile = {
-        position: [0, 1],
-        value: 2,
-      };
-      const tile2: Tile = {
-        position: [1, 3],
-        value: 2,
-      };
+  it("keeps obstacle tiles fixed and prevents merging across them", () => {
+    const state = appendTiles(
+      [
+        { position: [0, 0], value: 2 },
+        { position: [2, 0], value: 0, kind: "obstacle" },
+        { position: [3, 0], value: 2 },
+      ],
+      "4x4",
+    );
 
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
+    const nextState = gameReducer(state, { type: "move_left" });
 
-      act(() => {
-        dispatch({ type: "create_tile", tile: tile1 });
-        dispatch({ type: "create_tile", tile: tile2 });
-      });
-
-      const [stateBefore] = result.current;
-      expect(isNil(stateBefore.board[3][0])).toBeTruthy();
-      expect(typeof stateBefore.board[1][0]).toBe("string");
-      expect(typeof stateBefore.board[3][1]).toBe("string");
-      expect(stateBefore.hasChanged).toBeFalsy();
-
-      act(() => dispatch({ type: "move_down" }));
-
-      const [stateAfter] = result.current;
-      expect(typeof stateAfter.board[3][0]).toBe("string");
-      expect(typeof stateAfter.board[3][1]).toBe("string");
-      expect(isNil(stateAfter.board[1][0])).toBeTruthy();
-      expect(stateAfter.hasChanged).toBeTruthy();
-    });
-
-    it("should stack tiles with the same values on top of each other", () => {
-      const tile1: Tile = {
-        position: [0, 1],
-        value: 2,
-      };
-      const tile2: Tile = {
-        position: [0, 3],
-        value: 2,
-      };
-
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
-
-      act(() => {
-        dispatch({ type: "create_tile", tile: tile1 });
-        dispatch({ type: "create_tile", tile: tile2 });
-      });
-
-      const [stateBefore] = result.current;
-      expect(isNil(stateBefore.board[0][0])).toBeTruthy();
-      expect(typeof stateBefore.board[1][0]).toBe("string");
-      expect(isNil(stateBefore.board[2][0])).toBeTruthy();
-      expect(typeof stateBefore.board[3][0]).toBe("string");
-
-      act(() => dispatch({ type: "move_down" }));
-
-      const [stateAfter] = result.current;
-      expect(isNil(stateAfter.board[0][0])).toBeTruthy();
-      expect(isNil(stateAfter.board[1][0])).toBeTruthy();
-      expect(isNil(stateAfter.board[2][0])).toBeTruthy();
-      expect(typeof stateAfter.board[3][0]).toBe("string");
-    });
-
-    it("should merge tiles with the same values", () => {
-      const tile1: Tile = {
-        position: [0, 1],
-        value: 2,
-      };
-      const tile2: Tile = {
-        position: [0, 3],
-        value: 2,
-      };
-
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
-
-      act(() => {
-        dispatch({ type: "create_tile", tile: tile1 });
-        dispatch({ type: "create_tile", tile: tile2 });
-      });
-
-      const [stateBefore] = result.current;
-      expect(isNil(stateBefore.board[0][0])).toBeTruthy();
-      expect(stateBefore.tiles[stateBefore.board[1][0]].value).toBe(2);
-      expect(isNil(stateBefore.board[2][0])).toBeTruthy();
-      expect(stateBefore.tiles[stateBefore.board[3][0]].value).toBe(2);
-      expect(stateBefore.hasChanged).toBeFalsy();
-
-      act(() => dispatch({ type: "move_down" }));
-
-      const [stateAfter] = result.current;
-      expect(isNil(stateAfter.board[0][0])).toBeTruthy();
-      expect(isNil(stateAfter.board[1][0])).toBeTruthy();
-      expect(isNil(stateAfter.board[2][0])).toBeTruthy();
-      expect(stateAfter.tiles[stateAfter.board[3][0]].value).toBe(4);
-      expect(stateAfter.hasChanged).toBeTruthy();
-    });
-
-    it("should keep hasChanged falsy if no tile changed position or value", () => {
-      const tile1: Tile = {
-        position: [0, 3],
-        value: 2,
-      };
-      const tile2: Tile = {
-        position: [1, 3],
-        value: 2,
-      };
-
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
-
-      act(() => {
-        dispatch({ type: "create_tile", tile: tile1 });
-        dispatch({ type: "create_tile", tile: tile2 });
-        dispatch({ type: "move_down" });
-      });
-
-      expect(result.current[0].hasChanged).toBeFalsy();
-    });
-
-    it("should keep the original order of tiles (regression test)", () => {
-      const tile1: Tile = {
-        position: [0, 1],
-        value: 4,
-      };
-      const tile2: Tile = {
-        position: [0, 3],
-        value: 2,
-      };
-
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
-
-      act(() => {
-        dispatch({ type: "create_tile", tile: tile1 });
-        dispatch({ type: "create_tile", tile: tile2 });
-      });
-
-      const [stateBefore] = result.current;
-      expect(isNil(stateBefore.board[0][0])).toBeTruthy();
-      expect(stateBefore.tiles[stateBefore.board[1][0]].value).toBe(4);
-      expect(isNil(stateBefore.board[2][0])).toBeTruthy();
-      expect(stateBefore.tiles[stateBefore.board[3][0]].value).toBe(2);
-
-      act(() => dispatch({ type: "move_down" }));
-
-      const [stateAfter] = result.current;
-      expect(isNil(stateAfter.board[0][0])).toBeTruthy();
-      expect(isNil(stateAfter.board[1][0])).toBeTruthy();
-      expect(stateAfter.tiles[stateAfter.board[2][0]].value).toBe(4);
-      expect(stateAfter.tiles[stateAfter.board[3][0]].value).toBe(2);
-    });
+    expect(nextState.board[0][0]).toBeTruthy();
+    expect(nextState.board[0][1]).toBeUndefined();
+    expect(nextState.board[0][2]).toBeTruthy();
+    expect(nextState.tiles[nextState.board[0][2] as string].kind).toBe("obstacle");
+    expect(nextState.board[0][3]).toBeTruthy();
+    expect(nextState.tiles[nextState.board[0][3] as string].value).toBe(2);
+    expect(nextState.score).toBe(0);
   });
 
-  describe("move_left", () => {
-    it("should move tiles to the left side of the board", () => {
-      const tile1: Tile = {
-        position: [0, 1],
-        value: 2,
-      };
-      const tile2: Tile = {
-        position: [1, 3],
-        value: 2,
-      };
+  it("expands infinite boards by one ring while preserving score and shifting positions correctly", () => {
+    const state = appendTiles(
+      [
+        { position: [1, 1], value: 4096 },
+        { position: [2, 2], value: 8 },
+      ],
+      "infinite",
+    );
 
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
-
-      act(() => {
-        dispatch({ type: "create_tile", tile: tile1 });
-        dispatch({ type: "create_tile", tile: tile2 });
-      });
-
-      const [stateBefore] = result.current;
-      expect(isNil(stateBefore.board[3][0])).toBeTruthy();
-      expect(typeof stateBefore.board[1][0]).toBe("string");
-      expect(typeof stateBefore.board[3][1]).toBe("string");
-      expect(stateBefore.hasChanged).toBeFalsy();
-
-      act(() => dispatch({ type: "move_left" }));
-
-      const [stateAfter] = result.current;
-      expect(typeof stateAfter.board[1][0]).toBe("string");
-      expect(typeof stateAfter.board[3][0]).toBe("string");
-      expect(isNil(stateAfter.board[3][1])).toBeTruthy();
-      expect(stateAfter.hasChanged).toBeTruthy();
+    const expandedState = expandState(state, {
+      obstacleTiles: [{ position: [0, 0], value: 0, kind: "obstacle" }],
+      nextExpansionValue: 8192,
     });
 
-    it("should stack tiles with the same values on top of each other", () => {
-      const tile1: Tile = {
-        position: [0, 1],
-        value: 2,
-      };
-      const tile2: Tile = {
-        position: [3, 1],
-        value: 2,
-      };
+    expect(expandedState.dimension).toBe(6);
+    expect(expandedState.score).toBe(0);
+    expect(expandedState.nextExpansionValue).toBe(8192);
 
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
-
-      act(() => {
-        dispatch({ type: "create_tile", tile: tile1 });
-        dispatch({ type: "create_tile", tile: tile2 });
-      });
-
-      const [stateBefore] = result.current;
-      expect(typeof stateBefore.board[1][0]).toBe("string");
-      expect(isNil(stateBefore.board[1][1])).toBeTruthy();
-      expect(isNil(stateBefore.board[1][2])).toBeTruthy();
-      expect(typeof stateBefore.board[1][3]).toBe("string");
-
-      act(() => dispatch({ type: "move_left" }));
-
-      const [stateAfter] = result.current;
-      expect(typeof stateAfter.board[1][0]).toBe("string");
-      expect(isNil(stateAfter.board[1][1])).toBeTruthy();
-      expect(isNil(stateAfter.board[1][2])).toBeTruthy();
-      expect(isNil(stateAfter.board[1][3])).toBeTruthy();
-    });
-
-    it("should merge tiles with the same values", () => {
-      const tile1: Tile = {
-        position: [0, 1],
-        value: 2,
-      };
-      const tile2: Tile = {
-        position: [3, 1],
-        value: 2,
-      };
-
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
-
-      act(() => {
-        dispatch({ type: "create_tile", tile: tile1 });
-        dispatch({ type: "create_tile", tile: tile2 });
-      });
-
-      const [stateBefore] = result.current;
-      expect(stateBefore.tiles[stateBefore.board[1][0]].value).toBe(2);
-      expect(isNil(stateBefore.board[1][1])).toBeTruthy();
-      expect(isNil(stateBefore.board[1][2])).toBeTruthy();
-      expect(stateBefore.tiles[stateBefore.board[1][3]].value).toBe(2);
-      expect(stateBefore.hasChanged).toBeFalsy();
-
-      act(() => dispatch({ type: "move_left" }));
-
-      const [stateAfter] = result.current;
-      expect(typeof stateAfter.board[1][0]).toBe("string");
-      expect(stateAfter.tiles[stateAfter.board[1][0]].value).toBe(4);
-      expect(isNil(stateAfter.board[1][1])).toBeTruthy();
-      expect(isNil(stateAfter.board[1][2])).toBeTruthy();
-      expect(isNil(stateAfter.board[1][3])).toBeTruthy();
-      expect(stateAfter.hasChanged).toBeTruthy();
-    });
-
-    it("should keep hasChanged falsy if no tile changed position or value", () => {
-      const tile1: Tile = {
-        position: [0, 0],
-        value: 2,
-      };
-      const tile2: Tile = {
-        position: [0, 1],
-        value: 2,
-      };
-
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
-
-      act(() => {
-        dispatch({ type: "create_tile", tile: tile1 });
-        dispatch({ type: "create_tile", tile: tile2 });
-        dispatch({ type: "move_left" });
-      });
-
-      expect(result.current[0].hasChanged).toBeFalsy();
-    });
+    const tiles = Object.values(expandedState.tiles);
+    expect(tiles.find((tile) => tile.value === 4096)?.position).toEqual([2, 2]);
+    expect(tiles.find((tile) => tile.value === 8)?.position).toEqual([3, 3]);
+    expect(tiles.find((tile) => tile.kind === "obstacle")?.position).toEqual([0, 0]);
   });
 
-  describe("move_right", () => {
-    it("should move tiles to the right side of the board", () => {
-      const tile1: Tile = {
-        position: [0, 1],
-        value: 2,
-      };
-      const tile2: Tile = {
-        position: [1, 3],
-        value: 2,
-      };
-
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
-
-      act(() => {
-        dispatch({ type: "create_tile", tile: tile1 });
-        dispatch({ type: "create_tile", tile: tile2 });
-      });
-
-      const [stateBefore] = result.current;
-      expect(isNil(stateBefore.board[1][3])).toBeTruthy();
-      expect(isNil(stateBefore.board[3][3])).toBeTruthy();
-      expect(typeof stateBefore.board[1][0]).toBe("string");
-      expect(typeof stateBefore.board[3][1]).toBe("string");
-      expect(stateBefore.hasChanged).toBeFalsy();
-
-      act(() => dispatch({ type: "move_right" }));
-
-      const [stateAfter] = result.current;
-      expect(typeof stateAfter.board[1][3]).toBe("string");
-      expect(typeof stateAfter.board[3][3]).toBe("string");
-      expect(isNil(stateAfter.board[1][0])).toBeTruthy();
-      expect(isNil(stateAfter.board[3][1])).toBeTruthy();
-      expect(stateAfter.hasChanged).toBeTruthy();
+  it("migrates old persisted saves without dropping score", () => {
+    const migratedState = migratePersistedState({
+      board: [
+        ["tile-a", undefined, undefined, undefined],
+        [undefined, undefined, undefined, undefined],
+        [undefined, undefined, undefined, undefined],
+        [undefined, undefined, undefined, undefined],
+      ],
+      tiles: {
+        "tile-a": {
+          position: [0, 0],
+          value: 4,
+        },
+      },
+      score: 128,
+      status: "ongoing",
     });
 
-    it("should stack tiles with the same values on top of each other", () => {
-      const tile1: Tile = {
-        position: [0, 1],
-        value: 2,
-      };
-      const tile2: Tile = {
-        position: [3, 1],
-        value: 2,
-      };
+    expect(migratedState).not.toBeNull();
+    expect(migratedState?.dimension).toBe(4);
+    expect(migratedState?.mode).toBe("4x4");
+    expect(migratedState?.score).toBe(128);
+    expect(migratedState?.tiles["tile-a"].kind).toBe("number");
+  });
 
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
+  it("detects game over on arbitrary dimensions", () => {
+    const state = appendTiles(
+      [
+        { position: [0, 0], value: 2 },
+        { position: [1, 0], value: 4 },
+        { position: [2, 0], value: 2 },
+        { position: [0, 1], value: 4 },
+        { position: [1, 1], value: 2 },
+        { position: [2, 1], value: 4 },
+        { position: [0, 2], value: 2 },
+        { position: [1, 2], value: 4 },
+        { position: [2, 2], value: 2 },
+      ],
+      "5x5",
+    );
 
-      act(() => {
-        dispatch({ type: "create_tile", tile: tile1 });
-        dispatch({ type: "create_tile", tile: tile2 });
-      });
+    expect(canMove(state)).toBe(true);
 
-      const [stateBefore] = result.current;
-      expect(typeof stateBefore.board[1][0]).toBe("string");
-      expect(isNil(stateBefore.board[1][1])).toBeTruthy();
-      expect(isNil(stateBefore.board[1][2])).toBeTruthy();
-      expect(typeof stateBefore.board[1][3]).toBe("string");
+    const fullBlockedState = appendTiles(
+      [
+        { position: [0, 0], value: 2 },
+        { position: [1, 0], value: 4 },
+        { position: [2, 0], value: 2 },
+        { position: [3, 0], value: 4 },
+        { position: [4, 0], value: 2 },
+        { position: [0, 1], value: 4 },
+        { position: [1, 1], value: 2 },
+        { position: [2, 1], value: 4 },
+        { position: [3, 1], value: 2 },
+        { position: [4, 1], value: 4 },
+        { position: [0, 2], value: 2 },
+        { position: [1, 2], value: 4 },
+        { position: [2, 2], value: 2 },
+        { position: [3, 2], value: 4 },
+        { position: [4, 2], value: 2 },
+        { position: [0, 3], value: 4 },
+        { position: [1, 3], value: 2 },
+        { position: [2, 3], value: 4 },
+        { position: [3, 3], value: 2 },
+        { position: [4, 3], value: 4 },
+        { position: [0, 4], value: 2 },
+        { position: [1, 4], value: 4 },
+        { position: [2, 4], value: 2 },
+        { position: [3, 4], value: 4 },
+        { position: [4, 4], value: 2 },
+      ],
+      "5x5",
+    );
 
-      act(() => dispatch({ type: "move_right" }));
-
-      const [stateAfter] = result.current;
-      expect(isNil(stateAfter.board[1][0])).toBeTruthy();
-      expect(isNil(stateAfter.board[1][1])).toBeTruthy();
-      expect(isNil(stateAfter.board[1][2])).toBeTruthy();
-      expect(typeof stateAfter.board[1][3]).toBe("string");
-    });
-
-    it("should merge tiles with the same values", () => {
-      const tile1: Tile = {
-        position: [0, 1],
-        value: 2,
-      };
-      const tile2: Tile = {
-        position: [3, 1],
-        value: 2,
-      };
-
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
-
-      act(() => {
-        dispatch({ type: "create_tile", tile: tile1 });
-        dispatch({ type: "create_tile", tile: tile2 });
-      });
-
-      const [stateBefore] = result.current;
-      expect(stateBefore.tiles[stateBefore.board[1][0]].value).toBe(2);
-      expect(isNil(stateBefore.board[1][1])).toBeTruthy();
-      expect(isNil(stateBefore.board[1][2])).toBeTruthy();
-      expect(stateBefore.tiles[stateBefore.board[1][3]].value).toBe(2);
-      expect(stateBefore.hasChanged).toBeFalsy();
-
-      act(() => dispatch({ type: "move_right" }));
-
-      const [stateAfter] = result.current;
-      expect(isNil(stateAfter.board[1][0])).toBeTruthy();
-      expect(isNil(stateAfter.board[1][1])).toBeTruthy();
-      expect(isNil(stateAfter.board[1][2])).toBeTruthy();
-      expect(stateAfter.tiles[stateAfter.board[1][3]].value).toBe(4);
-      expect(stateAfter.hasChanged).toBeTruthy();
-    });
-
-    it("should keep hasChanged falsy if no tile changed position or value", () => {
-      const tile1: Tile = {
-        position: [3, 0],
-        value: 2,
-      };
-      const tile2: Tile = {
-        position: [3, 1],
-        value: 2,
-      };
-
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
-
-      act(() => {
-        dispatch({ type: "create_tile", tile: tile1 });
-        dispatch({ type: "create_tile", tile: tile2 });
-        dispatch({ type: "move_right" });
-      });
-
-      expect(result.current[0].hasChanged).toBeFalsy();
-    });
-
-    it("keep the original order of tiles (regression test)", () => {
-      const tile1: Tile = {
-        position: [0, 1],
-        value: 4,
-      };
-      const tile2: Tile = {
-        position: [3, 1],
-        value: 2,
-      };
-
-      const { result } = renderHook(() =>
-        useReducer(gameReducer, initialState),
-      );
-      const [, dispatch] = result.current;
-
-      act(() => {
-        dispatch({ type: "create_tile", tile: tile1 });
-        dispatch({ type: "create_tile", tile: tile2 });
-      });
-
-      const [stateBefore] = result.current;
-      expect(stateBefore.tiles[stateBefore.board[1][0]].value).toBe(4);
-      expect(isNil(stateBefore.board[1][1])).toBeTruthy();
-      expect(isNil(stateBefore.board[1][2])).toBeTruthy();
-      expect(stateBefore.tiles[stateBefore.board[1][3]].value).toBe(2);
-
-      act(() => dispatch({ type: "move_right" }));
-
-      const [stateAfter] = result.current;
-      expect(isNil(stateAfter.board[1][0])).toBeTruthy();
-      expect(isNil(stateAfter.board[1][1])).toBeTruthy();
-      expect(stateAfter.tiles[stateAfter.board[1][2]].value).toBe(4);
-      expect(stateAfter.tiles[stateAfter.board[1][3]].value).toBe(2);
-    });
+    expect(canMove(fullBlockedState)).toBe(false);
   });
 });

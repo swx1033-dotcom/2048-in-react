@@ -1,10 +1,14 @@
-import { render } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import GameProvider from "@/context/game-context";
 import Board from "@/components/board";
 import Score from "@/components/score";
 
 describe("Score", () => {
-  it("should display score", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it("displays score", async () => {
     const { container } = render(
       <GameProvider>
         <Score />
@@ -12,6 +16,8 @@ describe("Score", () => {
       </GameProvider>,
     );
 
-    expect(container.querySelector(".score > div")?.textContent).toEqual("0");
+    await waitFor(() => {
+      expect(container.querySelector(".score > div")?.textContent).toEqual("0");
+    });
   });
 });

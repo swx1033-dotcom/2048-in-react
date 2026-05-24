@@ -1,50 +1,41 @@
 .board {
+  --grid-size: 4;
+  --cell-gap: calc(var(--pixel-size) * 0.5);
+  --board-width: min(90vw, calc(var(--pixel-size) * 36));
+  --cell-size: calc(
+    (var(--board-width) - (var(--grid-size) + 1) * var(--cell-gap)) / var(--grid-size)
+  );
   position: relative;
-  width: calc(var(--pixel-size) * 8 * 4 + var(--pixel-size) * 5);
+  width: var(--board-width);
+  margin: 0 auto;
 }
 
 .grid {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(var(--grid-size), minmax(0, 1fr));
+  gap: var(--cell-gap);
+  padding: var(--cell-gap);
   background: var(--secondary-background);
-  border: calc(var(--pixel-size) * 0.5) solid var(--secondary-background);
   border-radius: calc(var(--pixel-size) * 0.75);
 }
 
 .cell {
-  width: calc(var(--pixel-size) * 8);
-  height: calc(var(--pixel-size) * 8);
-  margin: calc(var(--pixel-size) * 0.5);
-  border-radius: calc(var(--pixel-size) * 0.5);
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: calc(var(--cell-size) * 0.08);
   background: var(--cell-background);
 }
 
 .tiles {
   position: absolute;
+  inset: 0;
   z-index: 2;
-  margin: calc(var(--pixel-size) * 0.5);
-  left: 0;
-  top: 0;
-  right: 0;
-  bottom: 0;
+  pointer-events: none;
 }
 
 @media (min-width: 512px) {
   .board {
-    width: calc(var(--pixel-size) * 12.5 * 4 + var(--pixel-size) * 10);
-  }
-
-  .grid {
-    border: calc(var(--pixel-size) * 1) solid var(--secondary-background);
-  }
-
-  .cell {
-    width: calc(var(--pixel-size) * 12.5);
-    height: calc(var(--pixel-size) * 12.5);
-    margin: calc(var(--pixel-size) * 1);
-  }
-
-  .tiles {
-    margin: calc(var(--pixel-size) * 1);
+    --cell-gap: calc(var(--pixel-size) * 1);
+    --board-width: min(78vw, calc(var(--pixel-size) * 58));
   }
 }

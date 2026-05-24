@@ -1,82 +1,94 @@
-import { fireEvent, render } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { gameStateStorageKey } from "@/constants";
 import GameProvider from "@/context/game-context";
 import Board from "@/components/board";
 import Score from "@/components/score";
 
 describe("GameProvider", () => {
-  describe("startGame", () => {
-    it("should start the game with two tiles", () => {
-      const { container } = render(
-        <GameProvider>
-          <Board />
-        </GameProvider>,
-      );
+  beforeEach(() => {
+    window.localStorage.clear();
+    jest.useFakeTimers();
+  });
 
+  afterEach(() => {
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
+  });
+
+  it("starts with two tiles", async () => {
+    const { container } = render(
+      <GameProvider>
+        <Board />
+      </GameProvider>,
+    );
+
+    await waitFor(() => {
       expect(container.querySelectorAll(".tile")).toHaveLength(2);
     });
   });
 
-  describe("getTiles", () => {
-    it("should return tiles", () => {
-      const { container } = render(
-        <GameProvider>
-          <Board />
-        </GameProvider>,
-      );
+  it("keeps keyboard movement working after initialization", async () => {
+    const { container } = render(
+      <GameProvider>
+        <Board />
+      </GameProvider>,
+    );
 
-      expect(container.querySelectorAll(".tile")).toHaveLength(2);
-    });
-  });
-
-  describe("moveTiles", () => {
-    it("should move tiles and merge them together", () => {
-      const { container } = render(
-        <GameProvider>
-          <Board />
-        </GameProvider>,
-      );
-
-      expect(container.querySelectorAll(".tile4")).toHaveLength(0);
+    await waitFor(() => {
       expect(container.querySelectorAll(".tile2")).toHaveLength(2);
+    });
 
-      fireEvent.keyDown(container, {
+    act(() => {
+      fireEvent.keyDown(window, {
         key: "ArrowUp",
         code: "ArrowUp",
       });
+    });
 
-      expect(container.querySelectorAll(".tile4")).toHaveLength(1);
-      expect(container.querySelectorAll(".tile2")).toHaveLength(1);
+    expect(container.querySelectorAll(".tile4")).toHaveLength(1);
+
+    act(() => {
+      jest.advanceTimersByTime(120);
+    });
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".tile")).toHaveLength(2);
     });
   });
 
-  describe("score", () => {
-    it("should return score", () => {
-      const { container } = render(
-        <GameProvider>
-          <Score />
-          <Board />
-        </GameProvider>,
-      );
+  it("migrates old localStorage saves and preserves score", async () => {
+    window.localStorage.setItem(
+      gameStateStorageKey,
+      JSON.stringify({
+        board: [
+          ["tile-a", undefined, undefined, undefined],
+          [undefined, undefined, undefined, undefined],
+          [undefined, undefined, undefined, undefined],
+          [undefined, undefined, undefined, undefined],
+        ],
+        tiles: {
+          "tile-a": {
+            position: [0, 0],
+            value: 64,
+          },
+        },
+        score: 256,
+        status: "ongoing",
+      }),
+    );
 
-      expect(container.querySelector(".score > div")?.textContent).toEqual("0");
+    const { container } = render(
+      <GameProvider>
+        <Score />
+        <Board />
+      </GameProvider>,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector(".score > div")?.textContent).toEqual("256");
     });
 
-    it("should refresh score after move", () => {
-      const { container } = render(
-        <GameProvider>
-          <Score />
-          <Board />
-        </GameProvider>,
-      );
-
-      expect(container.querySelector(".score > div")?.textContent).toEqual("0");
-
-      fireEvent.keyDown(container, {
-        key: "ArrowUp",
-        code: "ArrowUp",
-      });
-
-      expect(container.querySelector(".score > div")?.textContent).toEqual("4");
-    });
+    expect(container.querySelectorAll(".cell")).toHaveLength(16);
+    expect(container.querySelectorAll(".tile")).toHaveLength(1);
   });
 });

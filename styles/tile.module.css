@@ -1,30 +1,25 @@
 .tile {
   position: absolute;
-  width: calc(var(--pixel-size) * 8);
-  height: calc(var(--pixel-size) * 8);
-  margin: calc(var(--pixel-size) * 0.5);
-  border-radius: calc(var(--pixel-size) * 0.5);
+  width: var(--cell-size);
+  height: var(--cell-size);
+  border-radius: calc(var(--cell-size) * 0.08);
   background: var(--tile-background);
   color: var(--primary-text-color);
-  font-size: calc(var(--pixel-size) * 4);
-  line-height: calc(var(--pixel-size) * 8);
+  font-size: clamp(16px, calc(var(--cell-size) * 0.42), 42px);
   font-weight: bold;
-  text-align: center;
-  transition-property: left, top, transform;
-  transition-duration: 200ms, 200ms, 100ms;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate3d(
+      calc(var(--cell-gap) + var(--position-x) * (var(--cell-size) + var(--cell-gap))),
+      calc(var(--cell-gap) + var(--position-y) * (var(--cell-size) + var(--cell-gap))),
+      0
+    )
+    scale(var(--tile-scale, 1));
+  transition: transform 200ms ease;
+  will-change: transform;
 }
 
-@media (min-width: 512px) {
-  .tile {
-    width: calc(var(--pixel-size) * 12.5);
-    height: calc(var(--pixel-size) * 12.5);
-    margin: calc(var(--pixel-size) * 1);
-    font-size: calc(var(--pixel-size) * 6);
-    line-height: calc(var(--pixel-size) * 12.5);
-  }
-}
-
-/* -=-=-=- START OF TEXT COLOR -=-=-=- */
 .tile8,
 .tile16,
 .tile32,
@@ -35,40 +30,24 @@
 .tile1024,
 .tile2048,
 .tile4096,
-.tile8192 {
+.tile8192,
+.tileSuper {
   color: var(--secondary-text-color);
 }
-/* -=-=-=-= END OF TEXT COLOR =-=-=-=- */
 
-/* -=-=-=- START OF TEXT SIZE -=-=-=- */
 .tile128,
 .tile256,
 .tile512 {
-  font-size: calc(var(--pixel-size) * 3.25);
+  font-size: clamp(13px, calc(var(--cell-size) * 0.34), 34px);
 }
 
 .tile1024,
 .tile2048,
 .tile4096,
-.tile8192 {
-  font-size: calc(var(--pixel-size) * 2.75);
+.tile8192,
+.tileSuper {
+  font-size: clamp(11px, calc(var(--cell-size) * 0.28), 28px);
 }
-
-@media (min-width: 512px) {
-  .tile128,
-  .tile256,
-  .tile512 {
-    font-size: calc(var(--pixel-size) * 5.5);
-  }
-
-  .tile1024,
-  .tile2048,
-  .tile4096,
-  .tile8192 {
-    font-size: calc(var(--pixel-size) * 4);
-  }
-}
-/* -=-=-=-= END OF TEXT SIZE =-=-=-=- */
 
 .tile2 {
   box-shadow:
@@ -129,9 +108,15 @@
 
 .tile2048,
 .tile4096,
-.tile8192 {
+.tile8192,
+.tileSuper {
   background: #edc22e;
   box-shadow:
     0 0 30px 10px rgba(243, 215, 116, 0.55556),
     inset 0 0 0 1px rgba(255, 255, 255, 0.33333);
+}
+
+.obstacle {
+  background: #8f7a66;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }

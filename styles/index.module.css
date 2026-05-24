@@ -13,12 +13,18 @@
 
 .twenty48 > header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  gap: calc(var(--pixel-size) * 1);
+  flex-wrap: wrap;
   margin: calc(var(--pixel-size) * 1) calc(var(--pixel-size) * 0);
 }
 
-.twenty48 > header > * {
+.twenty48 > header > h1 {
   flex: 1;
+}
+
+.twenty48 > header > *:last-child {
+  flex: 2;
 }
 
 .twenty48 > footer {

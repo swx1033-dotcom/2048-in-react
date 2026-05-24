@@ -1,3 +1,10 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: calc(var(--pixel-size) * 1);
+}
+
 .score {
   background: var(--secondary-background);
   border: calc(var(--pixel-size) * 0.5) solid var(--secondary-background);
@@ -15,6 +22,35 @@
   color: var(--secondary-text-color);
 }
 
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: calc(var(--pixel-size) * 0.5);
+}
+
+.option,
+.restart {
+  border: none;
+  border-radius: calc(var(--pixel-size) * 0.5);
+  background: #d8c8b6;
+  color: var(--primary-text-color);
+  cursor: pointer;
+  font-size: calc(var(--pixel-size) * 1.5);
+  font-weight: 700;
+  padding: calc(var(--pixel-size) * 0.75) calc(var(--pixel-size) * 1.25);
+}
+
+.active {
+  background: var(--button-background);
+  color: var(--secondary-text-color);
+}
+
+.restart {
+  background: var(--button-background);
+  color: var(--secondary-text-color);
+}
+
 @media (min-width: 512px) {
   .score {
     border: calc(var(--pixel-size) * 1) solid var(--secondary-background);
@@ -24,5 +60,10 @@
 
   .score > div {
     font-size: calc(var(--pixel-size) * 3.5);
+  }
+
+  .option,
+  .restart {
+    font-size: calc(var(--pixel-size) * 1.75);
   }
 }

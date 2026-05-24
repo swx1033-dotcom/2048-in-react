@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useReducer,
+  useState,
 } from "react";
 import { isNil, throttle } from "lodash";
 import {
@@ -16,16 +17,32 @@ import gameReducer, { initialState } from "@/reducers/game-reducer";
 
 type MoveDirection = "move_up" | "move_down" | "move_left" | "move_right";
 
+type StateSnapshot = {
+  board: string[][];
+  tiles: Record<string, Tile>;
+  tilesByIds: string[];
+  hasChanged: boolean;
+  score: number;
+  status: string;
+};
+
 export const GameContext = createContext({
   score: 0,
   status: "ongoing",
   moveTiles: (_: MoveDirection) => {},
   getTiles: () => [] as Tile[],
   startGame: () => {},
+  history: [] as StateSnapshot[],
+  historyIndex: -1 as number,
+  isPreviewing: false,
+  jumpToState: (_: number) => {},
+  confirmJump: () => {},
+  setPreviewing: (_: boolean) => {},
 });
 
 export default function GameProvider({ children }: PropsWithChildren) {
   const [gameState, dispatch] = useReducer(gameReducer, initialState);
+  const [isPreviewing, setIsPreviewing] = useState(false);
 
   const getEmptyCells = () => {
     const results: [number, number][] = [];
@@ -58,11 +75,14 @@ export default function GameProvider({ children }: PropsWithChildren) {
 
   const moveTiles = useCallback(
     throttle(
-      (type: MoveDirection) => dispatch({ type }),
+      (type: MoveDirection) => {
+        if (gameState.status !== "ongoing") return;
+        dispatch({ type });
+      },
       mergeAnimationDuration * 1.05,
       { trailing: false },
     ),
-    [dispatch],
+    [dispatch, gameState.status],
   );
 
   const startGame = () => {
@@ -70,6 +90,21 @@ export default function GameProvider({ children }: PropsWithChildren) {
     dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
     dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
   };
+
+  const jumpToState = useCallback(
+    (index: number) => {
+      dispatch({ type: "jump_to_state", index });
+    },
+    [dispatch],
+  );
+
+  const confirmJump = useCallback(() => {
+    dispatch({ type: "confirm_jump" });
+  }, [dispatch]);
+
+  const setPreviewing = useCallback((value: boolean) => {
+    setIsPreviewing(value);
+  }, []);
 
   const checkGameState = () => {
     const isWon =
@@ -112,6 +147,7 @@ export default function GameProvider({ children }: PropsWithChildren) {
       setTimeout(() => {
         dispatch({ type: "clean_up" });
         appendRandomTile();
+        dispatch({ type: "record_snapshot" });
       }, mergeAnimationDuration);
     }
   }, [gameState.hasChanged]);
@@ -130,6 +166,12 @@ export default function GameProvider({ children }: PropsWithChildren) {
         getTiles,
         moveTiles,
         startGame,
+        history: gameState.history,
+        historyIndex: gameState.historyIndex,
+        isPreviewing,
+        jumpToState,
+        confirmJump,
+        setPreviewing,
       }}
     >
       {children}

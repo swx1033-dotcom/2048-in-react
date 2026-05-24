@@ -1,0 +1,71 @@
+.timeline {
+  margin: calc(var(--pixel-size) * 1) 0;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--pixel-size) * 1);
+  background: var(--secondary-background);
+  border-radius: calc(var(--pixel-size) * 0.75);
+  padding: calc(var(--pixel-size) * 0.75) calc(var(--pixel-size) * 1.5);
+}
+
+.label {
+  font-size: calc(var(--pixel-size) * 1.25);
+  color: var(--secondary-text-color);
+  font-weight: bold;
+  white-space: nowrap;
+  min-width: 3.5em;
+  text-align: center;
+}
+
+.slider {
+  flex: 1;
+  appearance: none;
+  height: calc(var(--pixel-size) * 0.75);
+  background: var(--cell-background);
+  border-radius: calc(var(--pixel-size) * 0.5);
+  outline: none;
+  cursor: pointer;
+}
+
+.slider::-webkit-slider-thumb {
+  appearance: none;
+  width: calc(var(--pixel-size) * 2);
+  height: calc(var(--pixel-size) * 2);
+  border-radius: 50%;
+  background: var(--button-background);
+  cursor: pointer;
+  border: none;
+}
+
+.slider::-moz-range-thumb {
+  width: calc(var(--pixel-size) * 2);
+  height: calc(var(--pixel-size) * 2);
+  border-radius: 50%;
+  background: var(--button-background);
+  cursor: pointer;
+  border: none;
+}
+
+@media (min-width: 512px) {
+  .timeline {
+    padding: calc(var(--pixel-size) * 1) calc(var(--pixel-size) * 2);
+  }
+
+  .label {
+    font-size: calc(var(--pixel-size) * 1.5);
+  }
+
+  .slider {
+    height: calc(var(--pixel-size) * 1);
+  }
+
+  .slider::-webkit-slider-thumb {
+    width: calc(var(--pixel-size) * 3);
+    height: calc(var(--pixel-size) * 3);
+  }
+
+  .slider::-moz-range-thumb {
+    width: calc(var(--pixel-size) * 3);
+    height: calc(var(--pixel-size) * 3);
+  }
+}

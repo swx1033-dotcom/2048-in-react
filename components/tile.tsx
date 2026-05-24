@@ -10,7 +10,11 @@ import { Tile as TileProps } from "@/models/tile";
 import styles from "@/styles/tile.module.css";
 import usePreviousProps from "@/hooks/use-previous-props";
 
-export default function Tile({ position, value }: TileProps) {
+export default function Tile({
+  position,
+  value,
+  noAnimation = false,
+}: TileProps & { noAnimation?: boolean }) {
   const isWideScreen = useMediaQuery({ minWidth: 512 });
   const containerWidth = isWideScreen
     ? containerWidthDesktop
@@ -24,11 +28,11 @@ export default function Tile({ position, value }: TileProps) {
     (position / tileCountPerDimension) * containerWidth;
 
   useEffect(() => {
-    if (hasChanged) {
+    if (hasChanged && !noAnimation) {
       setScale(1.1);
       setTimeout(() => setScale(1), mergeAnimationDuration);
     }
-  }, [hasChanged]);
+  }, [hasChanged, noAnimation]);
 
   const style = {
     left: positionToPixels(position[0]),

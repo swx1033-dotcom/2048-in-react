@@ -5,15 +5,18 @@ import Tile from "./tile";
 import { GameContext } from "@/context/game-context";
 import MobileSwiper, { SwipeInput } from "./mobile-swiper";
 import Splash from "./splash";
+import TimelineSlider from "./timeline-slider";
 
 export default function Board() {
-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
+  const { getTiles, moveTiles, startGame, status, isPreviewing } =
+    useContext(GameContext);
   const initialized = useRef(false);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // disables page scrolling with keyboard arrows
       e.preventDefault();
+
+      if (isPreviewing) return;
 
       switch (e.code) {
         case "ArrowUp":
@@ -30,11 +33,13 @@ export default function Board() {
           break;
       }
     },
-    [moveTiles],
+    [moveTiles, isPreviewing],
   );
 
   const handleSwipe = useCallback(
     ({ deltaX, deltaY }: SwipeInput) => {
+      if (isPreviewing) return;
+
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
         if (deltaX > 0) {
           moveTiles("move_right");
@@ -49,7 +54,7 @@ export default function Board() {
         }
       }
     },
-    [moveTiles],
+    [moveTiles, isPreviewing],
   );
 
   const renderGrid = () => {
@@ -65,7 +70,7 @@ export default function Board() {
 
   const renderTiles = () => {
     return getTiles().map((tile: TileModel) => (
-      <Tile key={`${tile.id}`} {...tile} />
+      <Tile key={`${tile.id}`} {...tile} noAnimation={isPreviewing} />
     ));
   };
 
@@ -85,13 +90,16 @@ export default function Board() {
   }, [handleKeyDown]);
 
   return (
-    <MobileSwiper onSwipe={handleSwipe}>
-      <div className={styles.board}>
-        {status === "won" && <Splash heading="You won!" type="won" />}
-        {status === "lost" && <Splash heading="You lost!" />}
-        <div className={styles.tiles}>{renderTiles()}</div>
-        <div className={styles.grid}>{renderGrid()}</div>
-      </div>
-    </MobileSwiper>
+    <>
+      <MobileSwiper onSwipe={handleSwipe}>
+        <div className={styles.board}>
+          {status === "won" && <Splash heading="You won!" type="won" />}
+          {status === "lost" && <Splash heading="You lost!" />}
+          <div className={styles.tiles}>{renderTiles()}</div>
+          <div className={styles.grid}>{renderGrid()}</div>
+        </div>
+      </MobileSwiper>
+      <TimelineSlider />
+    </>
   );
 }

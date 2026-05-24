@@ -5,7 +5,9 @@ import { Tile, TileMap } from "@/models/tile";
 
 type GameStatus = "ongoing" | "won" | "lost";
 
-type State = {
+const MAX_HISTORY_SIZE = 50;
+
+type StateSnapshot = {
   board: string[][];
   tiles: TileMap;
   tilesByIds: string[];
@@ -13,6 +15,18 @@ type State = {
   score: number;
   status: GameStatus;
 };
+
+type State = {
+  board: string[][];
+  tiles: TileMap;
+  tilesByIds: string[];
+  hasChanged: boolean;
+  score: number;
+  status: GameStatus;
+  history: StateSnapshot[];
+  historyIndex: number;
+};
+
 type Action =
   | { type: "create_tile"; tile: Tile }
   | { type: "clean_up" }
@@ -21,7 +35,10 @@ type Action =
   | { type: "move_left" }
   | { type: "move_right" }
   | { type: "reset_game" }
-  | { type: "update_status"; status: GameStatus };
+  | { type: "update_status"; status: GameStatus }
+  | { type: "record_snapshot" }
+  | { type: "jump_to_state"; index: number }
+  | { type: "confirm_jump" };
 
 function createBoard() {
   const board: string[][] = [];
@@ -40,6 +57,8 @@ export const initialState: State = {
   hasChanged: false,
   score: 0,
   status: "ongoing",
+  history: [],
+  historyIndex: -1,
 };
 
 export default function gameReducer(
@@ -47,6 +66,65 @@ export default function gameReducer(
   action: Action,
 ) {
   switch (action.type) {
+    case "record_snapshot": {
+      let { history, historyIndex } = state;
+
+      if (historyIndex < history.length - 1) {
+        history = history.slice(0, historyIndex + 1);
+      }
+
+      const snapshot = JSON.parse(
+        JSON.stringify({
+          board: state.board,
+          tiles: state.tiles,
+          tilesByIds: state.tilesByIds,
+          hasChanged: state.hasChanged,
+          score: state.score,
+          status: state.status,
+        }),
+      );
+
+      history = [...history, snapshot];
+      if (history.length > MAX_HISTORY_SIZE) {
+        history = history.slice(history.length - MAX_HISTORY_SIZE);
+      }
+
+      return {
+        ...state,
+        history,
+        historyIndex: history.length - 1,
+      };
+    }
+
+    case "jump_to_state": {
+      const { index } = action;
+      if (index < 0 || index >= state.history.length) {
+        return state;
+      }
+
+      const snapshot = state.history[index];
+      return {
+        ...state,
+        board: JSON.parse(JSON.stringify(snapshot.board)),
+        tiles: JSON.parse(JSON.stringify(snapshot.tiles)),
+        tilesByIds: [...snapshot.tilesByIds],
+        hasChanged: snapshot.hasChanged,
+        score: snapshot.score,
+        status: snapshot.status,
+        historyIndex: index,
+      };
+    }
+
+    case "confirm_jump": {
+      if (state.historyIndex < 0) {
+        return state;
+      }
+      return {
+        ...state,
+        history: state.history.slice(0, state.historyIndex + 1),
+      };
+    }
+
     case "clean_up": {
       const flattenBoard = flattenDeep(state.board);
       const newTiles: TileMap = flattenBoard.reduce(
@@ -294,7 +372,7 @@ export default function gameReducer(
       };
     }
     case "reset_game":
-      return initialState;
+      return { ...initialState };
     case "update_status":
       return {
         ...state,

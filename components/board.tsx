@@ -5,9 +5,10 @@ import Tile from "./tile";
 import { GameContext } from "@/context/game-context";
 import MobileSwiper, { SwipeInput } from "./mobile-swiper";
 import Splash from "./splash";
+import TimeSlider from "./time-slider";
 
 export default function Board() {
-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
+  const { getTiles, moveTiles, startGame, status, isPreviewing } = useContext(GameContext);
   const initialized = useRef(false);
 
   const handleKeyDown = useCallback(
@@ -65,7 +66,7 @@ export default function Board() {
 
   const renderTiles = () => {
     return getTiles().map((tile: TileModel) => (
-      <Tile key={`${tile.id}`} {...tile} />
+      <Tile key={`${tile.id}`} {...tile} disableAnimation={isPreviewing} />
     ));
   };
 
@@ -92,6 +93,7 @@ export default function Board() {
         <div className={styles.tiles}>{renderTiles()}</div>
         <div className={styles.grid}>{renderGrid()}</div>
       </div>
+      <TimeSlider />
     </MobileSwiper>
   );
 }

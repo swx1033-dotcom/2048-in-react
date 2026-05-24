@@ -12,6 +12,9 @@ type State = {
   hasChanged: boolean;
   score: number;
   status: GameStatus;
+  history: State[];
+  historyIndex: number;
+  isPreviewing: boolean;
 };
 type Action =
   | { type: "create_tile"; tile: Tile }
@@ -21,7 +24,9 @@ type Action =
   | { type: "move_left" }
   | { type: "move_right" }
   | { type: "reset_game" }
-  | { type: "update_status"; status: GameStatus };
+  | { type: "update_status"; status: GameStatus }
+  | { type: "set_preview"; index: number }
+  | { type: "go_to_step"; index: number };
 
 function createBoard() {
   const board: string[][] = [];
@@ -33,6 +38,17 @@ function createBoard() {
   return board;
 }
 
+function createStateSnapshot(state: Omit<State, "history" | "historyIndex" | "isPreviewing">): Omit<State, "history" | "historyIndex" | "isPreviewing"> {
+  return {
+    board: JSON.parse(JSON.stringify(state.board)),
+    tiles: JSON.parse(JSON.stringify(state.tiles)),
+    tilesByIds: [...state.tilesByIds],
+    hasChanged: state.hasChanged,
+    score: state.score,
+    status: state.status,
+  };
+}
+
 export const initialState: State = {
   board: createBoard(),
   tiles: {},
@@ -40,17 +56,75 @@ export const initialState: State = {
   hasChanged: false,
   score: 0,
   status: "ongoing",
+  history: [],
+  historyIndex: -1,
+  isPreviewing: false,
 };
+
+const MAX_HISTORY = 50;
+
+function saveToHistory(newState: State, stateWithoutHistory: Omit<State, "history" | "historyIndex" | "isPreviewing">): State {
+  const snapshot = createStateSnapshot(stateWithoutHistory);
+  const currentHistory = newState.history.slice(0, newState.historyIndex + 1);
+  const newHistory = [...currentHistory, snapshot as State];
+  
+  if (newHistory.length > MAX_HISTORY) {
+    newHistory.shift();
+    return {
+      ...newState,
+      history: newHistory,
+      historyIndex: newHistory.length - 1,
+    };
+  }
+  
+  return {
+    ...newState,
+    history: newHistory,
+    historyIndex: newHistory.length - 1,
+  };
+}
 
 export default function gameReducer(
   state: State = initialState,
   action: Action,
 ) {
+  if (state.isPreviewing && 
+      !["set_preview", "go_to_step", "reset_game"].includes(action.type)) {
+    return state;
+  }
+
   switch (action.type) {
+    case "set_preview": {
+      const previewIndex = action.index;
+      if (previewIndex < 0 || previewIndex >= state.history.length) {
+        return state;
+      }
+      const previewState = state.history[previewIndex];
+      return {
+        ...state,
+        ...previewState,
+        isPreviewing: true,
+      };
+    }
+
+    case "go_to_step": {
+      const stepIndex = action.index;
+      if (stepIndex < 0 || stepIndex >= state.history.length) {
+        return state;
+      }
+      const targetState = state.history[stepIndex];
+      return {
+        ...state,
+        ...targetState,
+        historyIndex: stepIndex,
+        isPreviewing: false,
+      };
+    }
+
     case "clean_up": {
       const flattenBoard = flattenDeep(state.board);
       const newTiles: TileMap = flattenBoard.reduce(
-        (result, tileId: string) => {
+        (result: TileMap, tileId: string) => {
           if (isNil(tileId)) {
             return result;
           }
@@ -60,15 +134,17 @@ export default function gameReducer(
             [tileId]: state.tiles[tileId],
           };
         },
-        {},
+        {} as TileMap,
       );
 
-      return {
+      const newState = {
         ...state,
         tiles: newTiles,
         tilesByIds: Object.keys(newTiles),
         hasChanged: false,
       };
+
+      return saveToHistory(newState, newState);
     }
     case "create_tile": {
       const tileId = uid();
@@ -76,7 +152,7 @@ export default function gameReducer(
       const newBoard = JSON.parse(JSON.stringify(state.board));
       newBoard[y][x] = tileId;
 
-      return {
+      const newState = {
         ...state,
         board: newBoard,
         tiles: {
@@ -88,6 +164,8 @@ export default function gameReducer(
         },
         tilesByIds: [...state.tilesByIds, tileId],
       };
+
+      return saveToHistory(newState, newState);
     }
     case "move_up": {
       const newBoard = createBoard();
@@ -132,13 +210,20 @@ export default function gameReducer(
           }
         }
       }
-      return {
+      
+      const newState = {
         ...state,
         board: newBoard,
         tiles: newTiles,
         hasChanged,
         score,
       };
+
+      if (!hasChanged) {
+        return newState;
+      }
+
+      return newState;
     }
     case "move_down": {
       const newBoard = createBoard();
@@ -183,13 +268,20 @@ export default function gameReducer(
           }
         }
       }
-      return {
+      
+      const newState = {
         ...state,
         board: newBoard,
         tiles: newTiles,
         hasChanged,
         score,
       };
+
+      if (!hasChanged) {
+        return newState;
+      }
+
+      return newState;
     }
     case "move_left": {
       const newBoard = createBoard();
@@ -234,13 +326,20 @@ export default function gameReducer(
           }
         }
       }
-      return {
+      
+      const newState = {
         ...state,
         board: newBoard,
         tiles: newTiles,
         hasChanged,
         score,
       };
+
+      if (!hasChanged) {
+        return newState;
+      }
+
+      return newState;
     }
     case "move_right": {
       const newBoard = createBoard();
@@ -285,13 +384,20 @@ export default function gameReducer(
           }
         }
       }
-      return {
+      
+      const newState = {
         ...state,
         board: newBoard,
         tiles: newTiles,
         hasChanged,
         score,
       };
+
+      if (!hasChanged) {
+        return newState;
+      }
+
+      return newState;
     }
     case "reset_game":
       return initialState;

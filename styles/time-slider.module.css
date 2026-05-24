@@ -1,0 +1,96 @@
+.sliderContainer {
+  width: 100%;
+  margin-top: calc(var(--pixel-size) * 2);
+  padding: calc(var(--pixel-size) * 1.5);
+  background: var(--secondary-background);
+  border-radius: calc(var(--pixel-size) * 0.75);
+}
+
+.sliderLabel {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: calc(var(--pixel-size) * 1);
+  margin-bottom: calc(var(--pixel-size) * 1);
+  font-size: calc(var(--pixel-size) * 1.5);
+  color: var(--secondary-text-color);
+  font-weight: bold;
+}
+
+.previewing {
+  color: var(--text-color);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.slider {
+  width: 100%;
+  height: calc(var(--pixel-size) * 1.5);
+  border-radius: calc(var(--pixel-size) * 0.75);
+  background: var(--tile-background);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: calc(var(--pixel-size) * 3);
+  height: calc(var(--pixel-size) * 3);
+  border-radius: 50%;
+  background: var(--text-color);
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.slider::-moz-range-thumb {
+  width: calc(var(--pixel-size) * 3);
+  height: calc(var(--pixel-size) * 3);
+  border-radius: 50%;
+  background: var(--text-color);
+  cursor: pointer;
+  border: none;
+  transition: transform 0.2s ease;
+}
+
+.slider::-moz-range-thumb:hover {
+  transform: scale(1.2);
+}
+
+@media (min-width: 512px) {
+  .sliderContainer {
+    padding: calc(var(--pixel-size) * 2);
+  }
+
+  .sliderLabel {
+    font-size: calc(var(--pixel-size) * 2);
+    margin-bottom: calc(var(--pixel-size) * 1.5);
+  }
+
+  .slider {
+    height: calc(var(--pixel-size) * 2);
+  }
+
+  .slider::-webkit-slider-thumb {
+    width: calc(var(--pixel-size) * 4);
+    height: calc(var(--pixel-size) * 4);
+  }
+
+  .slider::-moz-range-thumb {
+    width: calc(var(--pixel-size) * 4);
+    height: calc(var(--pixel-size) * 4);
+  }
+}

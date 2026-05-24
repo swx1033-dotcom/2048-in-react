@@ -22,6 +22,11 @@ export const GameContext = createContext({
   moveTiles: (_: MoveDirection) => {},
   getTiles: () => [] as Tile[],
   startGame: () => {},
+  historyLength: 0,
+  historyIndex: -1,
+  isPreviewing: false,
+  setPreview: (_index: number) => {},
+  goToStep: (_index: number) => {},
 });
 
 export default function GameProvider({ children }: PropsWithChildren) {
@@ -58,11 +63,15 @@ export default function GameProvider({ children }: PropsWithChildren) {
 
   const moveTiles = useCallback(
     throttle(
-      (type: MoveDirection) => dispatch({ type }),
+      (type: MoveDirection) => {
+        if (!gameState.isPreviewing) {
+          dispatch({ type });
+        }
+      },
       mergeAnimationDuration * 1.05,
       { trailing: false },
     ),
-    [dispatch],
+    [dispatch, gameState.isPreviewing],
   );
 
   const startGame = () => {
@@ -107,20 +116,28 @@ export default function GameProvider({ children }: PropsWithChildren) {
     dispatch({ type: "update_status", status: "lost" });
   };
 
+  const setPreview = useCallback((index: number) => {
+    dispatch({ type: "set_preview", index });
+  }, [dispatch]);
+
+  const goToStep = useCallback((index: number) => {
+    dispatch({ type: "go_to_step", index });
+  }, [dispatch]);
+
   useEffect(() => {
-    if (gameState.hasChanged) {
+    if (gameState.hasChanged && !gameState.isPreviewing) {
       setTimeout(() => {
         dispatch({ type: "clean_up" });
         appendRandomTile();
       }, mergeAnimationDuration);
     }
-  }, [gameState.hasChanged]);
+  }, [gameState.hasChanged, gameState.isPreviewing]);
 
   useEffect(() => {
-    if (!gameState.hasChanged) {
+    if (!gameState.hasChanged && !gameState.isPreviewing) {
       checkGameState();
     }
-  }, [gameState.hasChanged]);
+  }, [gameState.hasChanged, gameState.isPreviewing]);
 
   return (
     <GameContext.Provider
@@ -130,6 +147,11 @@ export default function GameProvider({ children }: PropsWithChildren) {
         getTiles,
         moveTiles,
         startGame,
+        historyLength: gameState.history.length,
+        historyIndex: gameState.historyIndex,
+        isPreviewing: gameState.isPreviewing,
+        setPreview,
+        goToStep,
       }}
     >
       {children}

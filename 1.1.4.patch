@@ -1,0 +1,397 @@
+diff --git a/components/board.tsx b/components/board.tsx
+index 57e2531..77471aa 100644
+--- a/components/board.tsx
++++ b/components/board.tsx
+@@ -5,9 +5,10 @@ import Tile from "./tile";
+ import { GameContext } from "@/context/game-context";
+ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
+ import Splash from "./splash";
++import TimeSlider from "./time-slider";
+ 
+ export default function Board() {
+-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
++  const { getTiles, moveTiles, startGame, status, isPreviewing } = useContext(GameContext);
+   const initialized = useRef(false);
+ 
+   const handleKeyDown = useCallback(
+@@ -65,7 +66,7 @@ export default function Board() {
+ 
+   const renderTiles = () => {
+     return getTiles().map((tile: TileModel) => (
+-      <Tile key={`${tile.id}`} {...tile} />
++      <Tile key={`${tile.id}`} {...tile} disableAnimation={isPreviewing} />
+     ));
+   };
+ 
+@@ -92,6 +93,7 @@ export default function Board() {
+         <div className={styles.tiles}>{renderTiles()}</div>
+         <div className={styles.grid}>{renderGrid()}</div>
+       </div>
++      <TimeSlider />
+     </MobileSwiper>
+   );
+ }
+diff --git a/components/tile.tsx b/components/tile.tsx
+index 39964d5..d89568c 100644
+--- a/components/tile.tsx
++++ b/components/tile.tsx
+@@ -10,7 +10,11 @@ import { Tile as TileProps } from "@/models/tile";
+ import styles from "@/styles/tile.module.css";
+ import usePreviousProps from "@/hooks/use-previous-props";
+ 
+-export default function Tile({ position, value }: TileProps) {
++interface ExtendedTileProps extends TileProps {
++  disableAnimation?: boolean;
++}
++
++export default function Tile({ position, value, disableAnimation = false }: ExtendedTileProps) {
+   const isWideScreen = useMediaQuery({ minWidth: 512 });
+   const containerWidth = isWideScreen
+     ? containerWidthDesktop
+@@ -24,17 +28,18 @@ export default function Tile({ position, value }: TileProps) {
+     (position / tileCountPerDimension) * containerWidth;
+ 
+   useEffect(() => {
+-    if (hasChanged) {
++    if (hasChanged && !disableAnimation) {
+       setScale(1.1);
+       setTimeout(() => setScale(1), mergeAnimationDuration);
+     }
+-  }, [hasChanged]);
++  }, [hasChanged, disableAnimation]);
+ 
+   const style = {
+     left: positionToPixels(position[0]),
+     top: positionToPixels(position[1]),
+-    transform: `scale(${scale})`,
++    transform: disableAnimation ? "scale(1)" : `scale(${scale})`,
+     zIndex: value,
++    transition: disableAnimation ? "none" : undefined,
+   };
+ 
+   return (
+diff --git a/context/game-context.tsx b/context/game-context.tsx
+index 0b93edc..ef46dd6 100644
+--- a/context/game-context.tsx
++++ b/context/game-context.tsx
+@@ -22,6 +22,11 @@ export const GameContext = createContext({
+   moveTiles: (_: MoveDirection) => {},
+   getTiles: () => [] as Tile[],
+   startGame: () => {},
++  historyLength: 0,
++  historyIndex: -1,
++  isPreviewing: false,
++  setPreview: (_index: number) => {},
++  goToStep: (_index: number) => {},
+ });
+ 
+ export default function GameProvider({ children }: PropsWithChildren) {
+@@ -58,11 +63,15 @@ export default function GameProvider({ children }: PropsWithChildren) {
+ 
+   const moveTiles = useCallback(
+     throttle(
+-      (type: MoveDirection) => dispatch({ type }),
++      (type: MoveDirection) => {
++        if (!gameState.isPreviewing) {
++          dispatch({ type });
++        }
++      },
+       mergeAnimationDuration * 1.05,
+       { trailing: false },
+     ),
+-    [dispatch],
++    [dispatch, gameState.isPreviewing],
+   );
+ 
+   const startGame = () => {
+@@ -107,20 +116,28 @@ export default function GameProvider({ children }: PropsWithChildren) {
+     dispatch({ type: "update_status", status: "lost" });
+   };
+ 
++  const setPreview = useCallback((index: number) => {
++    dispatch({ type: "set_preview", index });
++  }, [dispatch]);
++
++  const goToStep = useCallback((index: number) => {
++    dispatch({ type: "go_to_step", index });
++  }, [dispatch]);
++
+   useEffect(() => {
+-    if (gameState.hasChanged) {
++    if (gameState.hasChanged && !gameState.isPreviewing) {
+       setTimeout(() => {
+         dispatch({ type: "clean_up" });
+         appendRandomTile();
+       }, mergeAnimationDuration);
+     }
+-  }, [gameState.hasChanged]);
++  }, [gameState.hasChanged, gameState.isPreviewing]);
+ 
+   useEffect(() => {
+-    if (!gameState.hasChanged) {
++    if (!gameState.hasChanged && !gameState.isPreviewing) {
+       checkGameState();
+     }
+-  }, [gameState.hasChanged]);
++  }, [gameState.hasChanged, gameState.isPreviewing]);
+ 
+   return (
+     <GameContext.Provider
+@@ -130,6 +147,11 @@ export default function GameProvider({ children }: PropsWithChildren) {
+         getTiles,
+         moveTiles,
+         startGame,
++        historyLength: gameState.history.length,
++        historyIndex: gameState.historyIndex,
++        isPreviewing: gameState.isPreviewing,
++        setPreview,
++        goToStep,
+       }}
+     >
+       {children}
+diff --git a/reducers/game-reducer.ts b/reducers/game-reducer.ts
+index 47d6226..7d71bf4 100644
+--- a/reducers/game-reducer.ts
++++ b/reducers/game-reducer.ts
+@@ -12,6 +12,9 @@ type State = {
+   hasChanged: boolean;
+   score: number;
+   status: GameStatus;
++  history: State[];
++  historyIndex: number;
++  isPreviewing: boolean;
+ };
+ type Action =
+   | { type: "create_tile"; tile: Tile }
+@@ -21,7 +24,9 @@ type Action =
+   | { type: "move_left" }
+   | { type: "move_right" }
+   | { type: "reset_game" }
+-  | { type: "update_status"; status: GameStatus };
++  | { type: "update_status"; status: GameStatus }
++  | { type: "set_preview"; index: number }
++  | { type: "go_to_step"; index: number };
+ 
+ function createBoard() {
+   const board: string[][] = [];
+@@ -33,6 +38,17 @@ function createBoard() {
+   return board;
+ }
+ 
++function createStateSnapshot(state: Omit<State, "history" | "historyIndex" | "isPreviewing">): Omit<State, "history" | "historyIndex" | "isPreviewing"> {
++  return {
++    board: JSON.parse(JSON.stringify(state.board)),
++    tiles: JSON.parse(JSON.stringify(state.tiles)),
++    tilesByIds: [...state.tilesByIds],
++    hasChanged: state.hasChanged,
++    score: state.score,
++    status: state.status,
++  };
++}
++
+ export const initialState: State = {
+   board: createBoard(),
+   tiles: {},
+@@ -40,17 +56,75 @@ export const initialState: State = {
+   hasChanged: false,
+   score: 0,
+   status: "ongoing",
++  history: [],
++  historyIndex: -1,
++  isPreviewing: false,
+ };
+ 
++const MAX_HISTORY = 50;
++
++function saveToHistory(newState: State, stateWithoutHistory: Omit<State, "history" | "historyIndex" | "isPreviewing">): State {
++  const snapshot = createStateSnapshot(stateWithoutHistory);
++  const currentHistory = newState.history.slice(0, newState.historyIndex + 1);
++  const newHistory = [...currentHistory, snapshot as State];
++  
++  if (newHistory.length > MAX_HISTORY) {
++    newHistory.shift();
++    return {
++      ...newState,
++      history: newHistory,
++      historyIndex: newHistory.length - 1,
++    };
++  }
++  
++  return {
++    ...newState,
++    history: newHistory,
++    historyIndex: newHistory.length - 1,
++  };
++}
++
+ export default function gameReducer(
+   state: State = initialState,
+   action: Action,
+ ) {
++  if (state.isPreviewing && 
++      !["set_preview", "go_to_step", "reset_game"].includes(action.type)) {
++    return state;
++  }
++
+   switch (action.type) {
++    case "set_preview": {
++      const previewIndex = action.index;
++      if (previewIndex < 0 || previewIndex >= state.history.length) {
++        return state;
++      }
++      const previewState = state.history[previewIndex];
++      return {
++        ...state,
++        ...previewState,
++        isPreviewing: true,
++      };
++    }
++
++    case "go_to_step": {
++      const stepIndex = action.index;
++      if (stepIndex < 0 || stepIndex >= state.history.length) {
++        return state;
++      }
++      const targetState = state.history[stepIndex];
++      return {
++        ...state,
++        ...targetState,
++        historyIndex: stepIndex,
++        isPreviewing: false,
++      };
++    }
++
+     case "clean_up": {
+       const flattenBoard = flattenDeep(state.board);
+       const newTiles: TileMap = flattenBoard.reduce(
+-        (result, tileId: string) => {
++        (result: TileMap, tileId: string) => {
+           if (isNil(tileId)) {
+             return result;
+           }
+@@ -60,15 +134,17 @@ export default function gameReducer(
+             [tileId]: state.tiles[tileId],
+           };
+         },
+-        {},
++        {} as TileMap,
+       );
+ 
+-      return {
++      const newState = {
+         ...state,
+         tiles: newTiles,
+         tilesByIds: Object.keys(newTiles),
+         hasChanged: false,
+       };
++
++      return saveToHistory(newState, newState);
+     }
+     case "create_tile": {
+       const tileId = uid();
+@@ -76,7 +152,7 @@ export default function gameReducer(
+       const newBoard = JSON.parse(JSON.stringify(state.board));
+       newBoard[y][x] = tileId;
+ 
+-      return {
++      const newState = {
+         ...state,
+         board: newBoard,
+         tiles: {
+@@ -88,6 +164,8 @@ export default function gameReducer(
+         },
+         tilesByIds: [...state.tilesByIds, tileId],
+       };
++
++      return saveToHistory(newState, newState);
+     }
+     case "move_up": {
+       const newBoard = createBoard();
+@@ -132,13 +210,20 @@ export default function gameReducer(
+           }
+         }
+       }
+-      return {
++      
++      const newState = {
+         ...state,
+         board: newBoard,
+         tiles: newTiles,
+         hasChanged,
+         score,
+       };
++
++      if (!hasChanged) {
++        return newState;
++      }
++
++      return newState;
+     }
+     case "move_down": {
+       const newBoard = createBoard();
+@@ -183,13 +268,20 @@ export default function gameReducer(
+           }
+         }
+       }
+-      return {
++      
++      const newState = {
+         ...state,
+         board: newBoard,
+         tiles: newTiles,
+         hasChanged,
+         score,
+       };
++
++      if (!hasChanged) {
++        return newState;
++      }
++
++      return newState;
+     }
+     case "move_left": {
+       const newBoard = createBoard();
+@@ -234,13 +326,20 @@ export default function gameReducer(
+           }
+         }
+       }
+-      return {
++      
++      const newState = {
+         ...state,
+         board: newBoard,
+         tiles: newTiles,
+         hasChanged,
+         score,
+       };
++
++      if (!hasChanged) {
++        return newState;
++      }
++
++      return newState;
+     }
+     case "move_right": {
+       const newBoard = createBoard();
+@@ -285,13 +384,20 @@ export default function gameReducer(
+           }
+         }
+       }
+-      return {
++      
++      const newState = {
+         ...state,
+         board: newBoard,
+         tiles: newTiles,
+         hasChanged,
+         score,
+       };
++
++      if (!hasChanged) {
++        return newState;
++      }
++
++      return newState;
+     }
+     case "reset_game":
+       return initialState;

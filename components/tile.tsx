@@ -10,7 +10,11 @@ import { Tile as TileProps } from "@/models/tile";
 import styles from "@/styles/tile.module.css";
 import usePreviousProps from "@/hooks/use-previous-props";
 
-export default function Tile({ position, value }: TileProps) {
+interface ExtendedTileProps extends TileProps {
+  disableAnimation?: boolean;
+}
+
+export default function Tile({ position, value, disableAnimation = false }: ExtendedTileProps) {
   const isWideScreen = useMediaQuery({ minWidth: 512 });
   const containerWidth = isWideScreen
     ? containerWidthDesktop
@@ -24,17 +28,18 @@ export default function Tile({ position, value }: TileProps) {
     (position / tileCountPerDimension) * containerWidth;
 
   useEffect(() => {
-    if (hasChanged) {
+    if (hasChanged && !disableAnimation) {
       setScale(1.1);
       setTimeout(() => setScale(1), mergeAnimationDuration);
     }
-  }, [hasChanged]);
+  }, [hasChanged, disableAnimation]);
 
   const style = {
     left: positionToPixels(position[0]),
     top: positionToPixels(position[1]),
-    transform: `scale(${scale})`,
+    transform: disableAnimation ? "scale(1)" : `scale(${scale})`,
     zIndex: value,
+    transition: disableAnimation ? "none" : undefined,
   };
 
   return (

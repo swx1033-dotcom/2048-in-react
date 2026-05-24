@@ -1,0 +1,243 @@
+diff --git a/components/board.tsx b/components/board.tsx
+index 57e2531..66a7aa2 100644
+--- a/components/board.tsx
++++ b/components/board.tsx
+@@ -7,13 +7,26 @@ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
+ import Splash from "./splash";
+ 
+ export default function Board() {
+-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
++  const { getTiles, moveTiles, startGame, status, undo, canUndo } =
++    useContext(GameContext);
+   const initialized = useRef(false);
+ 
+   const handleKeyDown = useCallback(
+     (e: KeyboardEvent) => {
++      // Ctrl+Z or Cmd+Z for undo
++      if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ") {
++        if (canUndo) {
++          undo();
++        }
++        return;
++      }
++
+       // disables page scrolling with keyboard arrows
+-      e.preventDefault();
++      if (
++        ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)
++      ) {
++        e.preventDefault();
++      }
+ 
+       switch (e.code) {
+         case "ArrowUp":
+@@ -30,7 +43,7 @@ export default function Board() {
+           break;
+       }
+     },
+-    [moveTiles],
++    [moveTiles, undo, canUndo],
+   );
+ 
+   const handleSwipe = useCallback(
+diff --git a/components/tile.tsx b/components/tile.tsx
+index 39964d5..dd98193 100644
+--- a/components/tile.tsx
++++ b/components/tile.tsx
+@@ -18,7 +18,7 @@ export default function Tile({ position, value }: TileProps) {
+ 
+   const [scale, setScale] = useState(1);
+   const previousValue = usePreviousProps<number>(value);
+-  const hasChanged = previousValue !== value;
++  const hasChanged = previousValue !== undefined && previousValue !== value && value > previousValue;
+ 
+   const positionToPixels = (position: number) =>
+     (position / tileCountPerDimension) * containerWidth;
+diff --git a/context/game-context.tsx b/context/game-context.tsx
+index 0b93edc..2df07a0 100644
+--- a/context/game-context.tsx
++++ b/context/game-context.tsx
+@@ -22,6 +22,8 @@ export const GameContext = createContext({
+   moveTiles: (_: MoveDirection) => {},
+   getTiles: () => [] as Tile[],
+   startGame: () => {},
++  undo: () => {},
++  canUndo: false,
+ });
+ 
+ export default function GameProvider({ children }: PropsWithChildren) {
+@@ -71,6 +73,10 @@ export default function GameProvider({ children }: PropsWithChildren) {
+     dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
+   };
+ 
++  const undo = useCallback(() => {
++    dispatch({ type: "undo" });
++  }, []);
++
+   const checkGameState = () => {
+     const isWon =
+       Object.values(gameState.tiles).filter((t) => t.value === gameWinTileValue)
+@@ -108,12 +114,16 @@ export default function GameProvider({ children }: PropsWithChildren) {
+   };
+ 
+   useEffect(() => {
++    let timeoutId: NodeJS.Timeout;
+     if (gameState.hasChanged) {
+-      setTimeout(() => {
++      timeoutId = setTimeout(() => {
+         dispatch({ type: "clean_up" });
+         appendRandomTile();
+       }, mergeAnimationDuration);
+     }
++    return () => {
++      if (timeoutId) clearTimeout(timeoutId);
++    };
+   }, [gameState.hasChanged]);
+ 
+   useEffect(() => {
+@@ -130,6 +140,8 @@ export default function GameProvider({ children }: PropsWithChildren) {
+         getTiles,
+         moveTiles,
+         startGame,
++        undo,
++        canUndo: gameState.undoHistory.length > 0,
+       }}
+     >
+       {children}
+diff --git a/pages/index.tsx b/pages/index.tsx
+index 75c6e8b..98040e7 100644
+--- a/pages/index.tsx
++++ b/pages/index.tsx
+@@ -3,8 +3,12 @@ import Image from "next/image";
+ import Board from "@/components/board";
+ import Score from "@/components/score";
+ import styles from "@/styles/index.module.css";
++import { GameContext } from "@/context/game-context";
++import { useContext } from "react";
+ 
+ export default function Home() {
++  const { undo, canUndo } = useContext(GameContext);
++
+   return (
+     <div className={styles.twenty48}>
+       <Head>
+diff --git a/reducers/game-reducer.ts b/reducers/game-reducer.ts
+index 47d6226..d08fe72 100644
+--- a/reducers/game-reducer.ts
++++ b/reducers/game-reducer.ts
+@@ -12,6 +12,7 @@ type State = {
+   hasChanged: boolean;
+   score: number;
+   status: GameStatus;
++  undoHistory: Omit<State, "undoHistory">[];
+ };
+ type Action =
+   | { type: "create_tile"; tile: Tile }
+@@ -21,7 +22,8 @@ type Action =
+   | { type: "move_left" }
+   | { type: "move_right" }
+   | { type: "reset_game" }
+-  | { type: "update_status"; status: GameStatus };
++  | { type: "update_status"; status: GameStatus }
++  | { type: "undo" };
+ 
+ function createBoard() {
+   const board: string[][] = [];
+@@ -40,6 +42,7 @@ export const initialState: State = {
+   hasChanged: false,
+   score: 0,
+   status: "ongoing",
++  undoHistory: [],
+ };
+ 
+ export default function gameReducer(
+@@ -285,16 +288,45 @@ export default function gameReducer(
+           }
+         }
+       }
++      const newHistory = hasChanged
++        ? [
++            ...state.undoHistory,
++            {
++              board: state.board,
++              tiles: state.tiles,
++              tilesByIds: state.tilesByIds,
++              score: state.score,
++              status: state.status,
++            },
++          ]
++        : state.undoHistory;
++
+       return {
+         ...state,
+         board: newBoard,
+         tiles: newTiles,
+         hasChanged,
+         score,
++        undoHistory: newHistory,
+       };
+     }
+     case "reset_game":
+       return initialState;
++    case "undo": {
++      if (state.undoHistory.length === 0) return state;
++      const lastState = state.undoHistory[state.undoHistory.length - 1];
++      const newHistory = state.undoHistory.slice(0, -1);
++      return {
++        ...state,
++        board: lastState.board,
++        tiles: lastState.tiles,
++        tilesByIds: lastState.tilesByIds,
++        score: lastState.score,
++        status: lastState.status,
++        hasChanged: false,
++        undoHistory: newHistory,
++      };
++    }
+     case "update_status":
+       return {
+         ...state,
+diff --git a/styles/index.module.css b/styles/index.module.css
+index 69b8807..2e18771 100644
+--- a/styles/index.module.css
++++ b/styles/index.module.css
+@@ -21,6 +21,39 @@
+   flex: 1;
+ }
+ 
++.headerRight {
++  display: flex;
++  align-items: center;
++  justify-content: flex-end;
++  gap: calc(var(--pixel-size) * 1);
++}
++
++.undoButton {
++  background: var(--secondary-background);
++  color: var(--secondary-text-color);
++  border: none;
++  border-radius: calc(var(--pixel-size) * 0.75);
++  font-size: calc(var(--pixel-size) * 2.5);
++  font-weight: bold;
++  padding: calc(var(--pixel-size) * 1) calc(var(--pixel-size) * 1.5);
++  cursor: pointer;
++  transition: opacity 0.2s;
++  height: 100%;
++}
++
++.undoButton:disabled {
++  opacity: 0.5;
++  cursor: not-allowed;
++}
++
++@media (min-width: 512px) {
++  .undoButton {
++    border-radius: calc(var(--pixel-size) * 1);
++    font-size: calc(var(--pixel-size) * 3);
++    padding: calc(var(--pixel-size) * 1.5) calc(var(--pixel-size) * 2.5);
++  }
++}
++
+ .twenty48 > footer {
+   margin: calc(var(--pixel-size) * 3) calc(var(--pixel-size) * 0);
+   font-weight: 600;

@@ -12,6 +12,7 @@ type State = {
   hasChanged: boolean;
   score: number;
   status: GameStatus;
+  undoHistory: Omit<State, "undoHistory">[];
 };
 type Action =
   | { type: "create_tile"; tile: Tile }
@@ -21,7 +22,8 @@ type Action =
   | { type: "move_left" }
   | { type: "move_right" }
   | { type: "reset_game" }
-  | { type: "update_status"; status: GameStatus };
+  | { type: "update_status"; status: GameStatus }
+  | { type: "undo" };
 
 function createBoard() {
   const board: string[][] = [];
@@ -40,6 +42,7 @@ export const initialState: State = {
   hasChanged: false,
   score: 0,
   status: "ongoing",
+  undoHistory: [],
 };
 
 export default function gameReducer(
@@ -285,16 +288,45 @@ export default function gameReducer(
           }
         }
       }
+      const newHistory = hasChanged
+        ? [
+            ...state.undoHistory,
+            {
+              board: state.board,
+              tiles: state.tiles,
+              tilesByIds: state.tilesByIds,
+              score: state.score,
+              status: state.status,
+            },
+          ]
+        : state.undoHistory;
+
       return {
         ...state,
         board: newBoard,
         tiles: newTiles,
         hasChanged,
         score,
+        undoHistory: newHistory,
       };
     }
     case "reset_game":
       return initialState;
+    case "undo": {
+      if (state.undoHistory.length === 0) return state;
+      const lastState = state.undoHistory[state.undoHistory.length - 1];
+      const newHistory = state.undoHistory.slice(0, -1);
+      return {
+        ...state,
+        board: lastState.board,
+        tiles: lastState.tiles,
+        tilesByIds: lastState.tilesByIds,
+        score: lastState.score,
+        status: lastState.status,
+        hasChanged: false,
+        undoHistory: newHistory,
+      };
+    }
     case "update_status":
       return {
         ...state,

@@ -3,8 +3,12 @@ import Image from "next/image";
 import Board from "@/components/board";
 import Score from "@/components/score";
 import styles from "@/styles/index.module.css";
+import { GameContext } from "@/context/game-context";
+import { useContext } from "react";
 
 export default function Home() {
+  const { undo, canUndo } = useContext(GameContext);
+
   return (
     <div className={styles.twenty48}>
       <Head>

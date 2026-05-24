@@ -7,13 +7,26 @@ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
 import Splash from "./splash";
 
 export default function Board() {
-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
+  const { getTiles, moveTiles, startGame, status, undo, canUndo } =
+    useContext(GameContext);
   const initialized = useRef(false);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
+      // Ctrl+Z or Cmd+Z for undo
+      if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ") {
+        if (canUndo) {
+          undo();
+        }
+        return;
+      }
+
       // disables page scrolling with keyboard arrows
-      e.preventDefault();
+      if (
+        ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)
+      ) {
+        e.preventDefault();
+      }
 
       switch (e.code) {
         case "ArrowUp":
@@ -30,7 +43,7 @@ export default function Board() {
           break;
       }
     },
-    [moveTiles],
+    [moveTiles, undo, canUndo],
   );
 
   const handleSwipe = useCallback(

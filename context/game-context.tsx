@@ -22,6 +22,8 @@ export const GameContext = createContext({
   moveTiles: (_: MoveDirection) => {},
   getTiles: () => [] as Tile[],
   startGame: () => {},
+  undo: () => {},
+  canUndo: false,
 });
 
 export default function GameProvider({ children }: PropsWithChildren) {
@@ -71,6 +73,10 @@ export default function GameProvider({ children }: PropsWithChildren) {
     dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
   };
 
+  const undo = useCallback(() => {
+    dispatch({ type: "undo" });
+  }, []);
+
   const checkGameState = () => {
     const isWon =
       Object.values(gameState.tiles).filter((t) => t.value === gameWinTileValue)
@@ -108,12 +114,16 @@ export default function GameProvider({ children }: PropsWithChildren) {
   };
 
   useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
     if (gameState.hasChanged) {
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         dispatch({ type: "clean_up" });
         appendRandomTile();
       }, mergeAnimationDuration);
     }
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, [gameState.hasChanged]);
 
   useEffect(() => {
@@ -130,6 +140,8 @@ export default function GameProvider({ children }: PropsWithChildren) {
         getTiles,
         moveTiles,
         startGame,
+        undo,
+        canUndo: gameState.undoHistory.length > 0,
       }}
     >
       {children}

@@ -21,6 +21,39 @@
   flex: 1;
 }
 
+.headerRight {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: calc(var(--pixel-size) * 1);
+}
+
+.undoButton {
+  background: var(--secondary-background);
+  color: var(--secondary-text-color);
+  border: none;
+  border-radius: calc(var(--pixel-size) * 0.75);
+  font-size: calc(var(--pixel-size) * 2.5);
+  font-weight: bold;
+  padding: calc(var(--pixel-size) * 1) calc(var(--pixel-size) * 1.5);
+  cursor: pointer;
+  transition: opacity 0.2s;
+  height: 100%;
+}
+
+.undoButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (min-width: 512px) {
+  .undoButton {
+    border-radius: calc(var(--pixel-size) * 1);
+    font-size: calc(var(--pixel-size) * 3);
+    padding: calc(var(--pixel-size) * 1.5) calc(var(--pixel-size) * 2.5);
+  }
+}
+
 .twenty48 > footer {
   margin: calc(var(--pixel-size) * 3) calc(var(--pixel-size) * 0);
   font-weight: 600;

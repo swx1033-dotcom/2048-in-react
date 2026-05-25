@@ -3,7 +3,7 @@ import { isNil } from "lodash";
 
 export type MoveDirection = "move_up" | "move_down" | "move_left" | "move_right";
 
-function canMove(
+export function canMove(
   board: string[][],
   tiles: TileMap,
   direction: MoveDirection,
@@ -56,6 +56,23 @@ function canMove(
   }
 
   return false;
+}
+
+export function isGameOver(board: string[][], tiles: TileMap): boolean {
+  const directions: MoveDirection[] = [
+    "move_up",
+    "move_down",
+    "move_left",
+    "move_right",
+  ];
+
+  for (const direction of directions) {
+    if (canMove(board, tiles, direction)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 export function getRandomMove(

@@ -15,7 +15,7 @@ import {
 } from "@/constants";
 import { Tile } from "@/models/tile";
 import gameReducer, { initialState } from "@/reducers/game-reducer";
-import { getRandomMove, MoveDirection } from "@/utils/moves";
+import { getRandomMove, isGameOver, MoveDirection } from "@/utils/moves";
 
 type GameStatus = "ongoing" | "won" | "lost";
 
@@ -36,6 +36,7 @@ type GameContextType = {
   moveTiles: (dir: MoveDirection) => void;
   getTiles: () => Tile[];
   startGame: (isCompetition?: boolean) => void;
+  continueGame: () => void;
   resetTimer: () => void;
   stopTimer: () => void;
 };
@@ -50,6 +51,7 @@ export const GameContext = createContext<GameContextType>({
   moveTiles: () => {},
   getTiles: () => [],
   startGame: () => {},
+  continueGame: () => {},
   resetTimer: () => {},
   stopTimer: () => {},
 });
@@ -145,6 +147,10 @@ export default function GameProvider({ children }: PropsWithChildren) {
     [resetTimer],
   );
 
+  const continueGame = useCallback(() => {
+    dispatch({ type: "continue_game" });
+  }, []);
+
   const moveTiles = useCallback(
     throttle(
       (type: MoveDirection) => executeMove(type),
@@ -209,7 +215,7 @@ export default function GameProvider({ children }: PropsWithChildren) {
   );
 
   const checkGameState = useCallback(() => {
-    const { tiles } = gameStateRef.current;
+    const { tiles, board } = gameStateRef.current;
     const isWon =
       Object.values(tiles).filter((t: Tile) => t.value === gameWinTileValue)
         .length > 0;
@@ -220,31 +226,10 @@ export default function GameProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    const { board } = gameStateRef.current;
-
-    const maxIndex = tileCountPerDimension - 1;
-    for (let x = 0; x < maxIndex; x += 1) {
-      for (let y = 0; y < maxIndex; y += 1) {
-        if (
-          isNil(board[x][y]) ||
-          isNil(board[x + 1][y]) ||
-          isNil(board[x][y + 1])
-        ) {
-          return;
-        }
-
-        if (tiles[board[x][y]]?.value === tiles[board[x + 1][y]]?.value) {
-          return;
-        }
-
-        if (tiles[board[x][y]]?.value === tiles[board[x][y + 1]]?.value) {
-          return;
-        }
-      }
+    if (isGameOver(board, tiles)) {
+      dispatch({ type: "update_status", status: "lost" });
+      stopTimer();
     }
-
-    dispatch({ type: "update_status", status: "lost" });
-    stopTimer();
   }, [stopTimer]);
 
   useEffect(() => {
@@ -281,6 +266,7 @@ export default function GameProvider({ children }: PropsWithChildren) {
         moveTiles,
         getTiles,
         startGame,
+        continueGame,
         resetTimer,
         stopTimer,
       }}

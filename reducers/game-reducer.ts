@@ -21,7 +21,8 @@ type Action =
   | { type: "move_left" }
   | { type: "move_right" }
   | { type: "reset_game" }
-  | { type: "update_status"; status: GameStatus };
+  | { type: "update_status"; status: GameStatus }
+  | { type: "continue_game" };
 
 function createBoard() {
   const board: string[][] = [];
@@ -299,6 +300,11 @@ export default function gameReducer(
       return {
         ...state,
         status: action.status,
+      };
+    case "continue_game":
+      return {
+        ...state,
+        status: "ongoing",
       };
     default:
       return state;

@@ -1,0 +1,215 @@
+diff --git a/components/board.tsx b/components/board.tsx
+index 39803f7..5533542 100644
+--- a/components/board.tsx
++++ b/components/board.tsx
+@@ -4,15 +4,18 @@ import styles from "@/styles/board.module.css";
+ import Tile from "./tile";
+ import { GameContext } from "@/context/game-context";
+ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
+-import Splash from "./splash";
++import GameStatusModal from "./GameStatusModal";
+ import CircularTimer from "./circular-timer";
+ 
+ export default function Board() {
+   const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
+   const initialized = useRef(false);
++  const isGameActive = status === "ongoing";
+ 
+   const handleKeyDown = useCallback(
+     (e: KeyboardEvent) => {
++      if (!isGameActive) return;
++      
+       e.preventDefault();
+ 
+       switch (e.code) {
+@@ -30,11 +33,13 @@ export default function Board() {
+           break;
+       }
+     },
+-    [moveTiles],
++    [moveTiles, isGameActive],
+   );
+ 
+   const handleSwipe = useCallback(
+     ({ deltaX, deltaY }: SwipeInput) => {
++      if (!isGameActive) return;
++      
+       if (Math.abs(deltaX) > Math.abs(deltaY)) {
+         if (deltaX > 0) {
+           moveTiles("move_right");
+@@ -49,7 +54,7 @@ export default function Board() {
+         }
+       }
+     },
+-    [moveTiles],
++    [moveTiles, isGameActive],
+   );
+ 
+   const renderGrid = () => {
+@@ -90,8 +95,9 @@ export default function Board() {
+         <div className={styles.timerContainer}>
+           <CircularTimer />
+         </div>
+-        {status === "won" && <Splash heading="You won!" type="won" />}
+-        {status === "lost" && <Splash heading="You lost!" />}
++        {(status === "won" || status === "lost") && (
++          <GameStatusModal status={status} />
++        )}
+         <div className={styles.tiles}>{renderTiles()}</div>
+         <div className={styles.grid}>{renderGrid()}</div>
+       </div>
+diff --git a/context/game-context.tsx b/context/game-context.tsx
+index 291e0b3..a215bf9 100644
+--- a/context/game-context.tsx
++++ b/context/game-context.tsx
+@@ -15,7 +15,7 @@ import {
+ } from "@/constants";
+ import { Tile } from "@/models/tile";
+ import gameReducer, { initialState } from "@/reducers/game-reducer";
+-import { getRandomMove, MoveDirection } from "@/utils/moves";
++import { getRandomMove, isGameOver, MoveDirection } from "@/utils/moves";
+ 
+ type GameStatus = "ongoing" | "won" | "lost";
+ 
+@@ -36,6 +36,7 @@ type GameContextType = {
+   moveTiles: (dir: MoveDirection) => void;
+   getTiles: () => Tile[];
+   startGame: (isCompetition?: boolean) => void;
++  continueGame: () => void;
+   resetTimer: () => void;
+   stopTimer: () => void;
+ };
+@@ -50,6 +51,7 @@ export const GameContext = createContext<GameContextType>({
+   moveTiles: () => {},
+   getTiles: () => [],
+   startGame: () => {},
++  continueGame: () => {},
+   resetTimer: () => {},
+   stopTimer: () => {},
+ });
+@@ -145,6 +147,10 @@ export default function GameProvider({ children }: PropsWithChildren) {
+     [resetTimer],
+   );
+ 
++  const continueGame = useCallback(() => {
++    dispatch({ type: "continue_game" });
++  }, []);
++
+   const moveTiles = useCallback(
+     throttle(
+       (type: MoveDirection) => executeMove(type),
+@@ -209,7 +215,7 @@ export default function GameProvider({ children }: PropsWithChildren) {
+   );
+ 
+   const checkGameState = useCallback(() => {
+-    const { tiles } = gameStateRef.current;
++    const { tiles, board } = gameStateRef.current;
+     const isWon =
+       Object.values(tiles).filter((t: Tile) => t.value === gameWinTileValue)
+         .length > 0;
+@@ -220,31 +226,10 @@ export default function GameProvider({ children }: PropsWithChildren) {
+       return;
+     }
+ 
+-    const { board } = gameStateRef.current;
+-
+-    const maxIndex = tileCountPerDimension - 1;
+-    for (let x = 0; x < maxIndex; x += 1) {
+-      for (let y = 0; y < maxIndex; y += 1) {
+-        if (
+-          isNil(board[x][y]) ||
+-          isNil(board[x + 1][y]) ||
+-          isNil(board[x][y + 1])
+-        ) {
+-          return;
+-        }
+-
+-        if (tiles[board[x][y]]?.value === tiles[board[x + 1][y]]?.value) {
+-          return;
+-        }
+-
+-        if (tiles[board[x][y]]?.value === tiles[board[x][y + 1]]?.value) {
+-          return;
+-        }
+-      }
++    if (isGameOver(board, tiles)) {
++      dispatch({ type: "update_status", status: "lost" });
++      stopTimer();
+     }
+-
+-    dispatch({ type: "update_status", status: "lost" });
+-    stopTimer();
+   }, [stopTimer]);
+ 
+   useEffect(() => {
+@@ -281,6 +266,7 @@ export default function GameProvider({ children }: PropsWithChildren) {
+         moveTiles,
+         getTiles,
+         startGame,
++        continueGame,
+         resetTimer,
+         stopTimer,
+       }}
+diff --git a/reducers/game-reducer.ts b/reducers/game-reducer.ts
+index 47d6226..f3f697f 100644
+--- a/reducers/game-reducer.ts
++++ b/reducers/game-reducer.ts
+@@ -21,7 +21,8 @@ type Action =
+   | { type: "move_left" }
+   | { type: "move_right" }
+   | { type: "reset_game" }
+-  | { type: "update_status"; status: GameStatus };
++  | { type: "update_status"; status: GameStatus }
++  | { type: "continue_game" };
+ 
+ function createBoard() {
+   const board: string[][] = [];
+@@ -300,6 +301,11 @@ export default function gameReducer(
+         ...state,
+         status: action.status,
+       };
++    case "continue_game":
++      return {
++        ...state,
++        status: "ongoing",
++      };
+     default:
+       return state;
+   }
+diff --git a/utils/moves.ts b/utils/moves.ts
+index 250f6e7..1a7c04c 100644
+--- a/utils/moves.ts
++++ b/utils/moves.ts
+@@ -3,7 +3,7 @@ import { isNil } from "lodash";
+ 
+ export type MoveDirection = "move_up" | "move_down" | "move_left" | "move_right";
+ 
+-function canMove(
++export function canMove(
+   board: string[][],
+   tiles: TileMap,
+   direction: MoveDirection,
+@@ -58,6 +58,23 @@ function canMove(
+   return false;
+ }
+ 
++export function isGameOver(board: string[][], tiles: TileMap): boolean {
++  const directions: MoveDirection[] = [
++    "move_up",
++    "move_down",
++    "move_left",
++    "move_right",
++  ];
++
++  for (const direction of directions) {
++    if (canMove(board, tiles, direction)) {
++      return false;
++    }
++  }
++
++  return true;
++}
++
+ export function getRandomMove(
+   board: string[][],
+   tiles: TileMap,

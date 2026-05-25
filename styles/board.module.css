@@ -3,6 +3,14 @@
   width: calc(var(--pixel-size) * 8 * 4 + var(--pixel-size) * 5);
 }
 
+.timerContainer {
+  position: absolute;
+  top: -100px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+}
+
 .grid {
   display: flex;
   flex-wrap: wrap;

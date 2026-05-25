@@ -1,0 +1,35 @@
+.circularTimer {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.circularTimerSvg {
+  transform: rotate(-90deg);
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.circularTimerBg {
+  fill: none;
+  stroke: rgba(238, 228, 218, 0.3);
+  stroke-width: 6;
+}
+
+.circularTimerProgress {
+  fill: none;
+  stroke: #ee5f5f;
+  stroke-width: 6;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.05s linear;
+}
+
+.circularTimerText {
+  font-size: 20px;
+  font-weight: bold;
+  color: var(--secondary-text-color);
+}

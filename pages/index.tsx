@@ -2,6 +2,7 @@ import Head from "next/head";
 import Image from "next/image";
 import Board from "@/components/board";
 import Score from "@/components/score";
+import CompetitionStats from "@/components/competition-stats";
 import styles from "@/styles/index.module.css";
 
 export default function Home() {
@@ -26,6 +27,7 @@ export default function Home() {
       <header>
         <h1>2048</h1>
         <Score />
+        <CompetitionStats />
       </header>
       <main>
         <Board />

@@ -4,6 +4,8 @@ import {
   useCallback,
   useEffect,
   useReducer,
+  useRef,
+  useState,
 } from "react";
 import { isNil, throttle } from "lodash";
 import {
@@ -13,34 +15,83 @@ import {
 } from "@/constants";
 import { Tile } from "@/models/tile";
 import gameReducer, { initialState } from "@/reducers/game-reducer";
+import { getRandomMove, MoveDirection } from "@/utils/moves";
 
-type MoveDirection = "move_up" | "move_down" | "move_left" | "move_right";
+type GameStatus = "ongoing" | "won" | "lost";
 
-export const GameContext = createContext({
+type CompetitionStats = {
+  avgThinkingTime: number;
+  timeoutCount: number;
+  totalMoveTime: number;
+  moveCount: number;
+};
+
+type GameContextType = {
+  score: number;
+  status: GameStatus;
+  isCompetition: boolean;
+  competitionStats: CompetitionStats;
+  countdown: number;
+  countdownDuration: number;
+  moveTiles: (dir: MoveDirection) => void;
+  getTiles: () => Tile[];
+  startGame: (isCompetition?: boolean) => void;
+  resetTimer: () => void;
+  stopTimer: () => void;
+};
+
+export const GameContext = createContext<GameContextType>({
   score: 0,
   status: "ongoing",
-  moveTiles: (_: MoveDirection) => {},
-  getTiles: () => [] as Tile[],
+  isCompetition: false,
+  competitionStats: { avgThinkingTime: 0, timeoutCount: 0, totalMoveTime: 0, moveCount: 0 },
+  countdown: 0,
+  countdownDuration: 5000,
+  moveTiles: () => {},
+  getTiles: () => [],
   startGame: () => {},
+  resetTimer: () => {},
+  stopTimer: () => {},
 });
+
+const COMPETITION_COUNTDOWN = 5000;
 
 export default function GameProvider({ children }: PropsWithChildren) {
   const [gameState, dispatch] = useReducer(gameReducer, initialState);
+  const [isCompetition, setIsCompetition] = useState(false);
+  const [countdown, setCountdown] = useState(COMPETITION_COUNTDOWN);
+  const [competitionStats, setCompetitionStats] = useState<CompetitionStats>({
+    avgThinkingTime: 0,
+    timeoutCount: 0,
+    totalMoveTime: 0,
+    moveCount: 0,
+  });
 
-  const getEmptyCells = () => {
+  const animationFrameRef = useRef<number | undefined>(undefined);
+  const lastMoveTimeRef = useRef<number>(0);
+  const isMovingRef = useRef<boolean>(false);
+  const isCompetitionRef = useRef<boolean>(false);
+  const gameStateRef = useRef(gameState);
+
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
+
+  const getEmptyCells = useCallback(() => {
     const results: [number, number][] = [];
+    const { board } = gameStateRef.current;
 
     for (let x = 0; x < tileCountPerDimension; x++) {
       for (let y = 0; y < tileCountPerDimension; y++) {
-        if (isNil(gameState.board[y][x])) {
+        if (isNil(board[y][x])) {
           results.push([x, y]);
         }
       }
     }
     return results;
-  };
+  }, []);
 
-  const appendRandomTile = () => {
+  const appendRandomTile = useCallback(() => {
     const emptyCells = getEmptyCells();
     if (emptyCells.length > 0) {
       const cellIndex = Math.floor(Math.random() * emptyCells.length);
@@ -50,86 +101,188 @@ export default function GameProvider({ children }: PropsWithChildren) {
       };
       dispatch({ type: "create_tile", tile: newTile });
     }
-  };
+  }, [getEmptyCells]);
 
-  const getTiles = () => {
-    return gameState.tilesByIds.map((tileId) => gameState.tiles[tileId]);
-  };
+  const getTiles = useCallback(() => {
+    return gameState.tilesByIds.map((tileId: string) => gameState.tiles[tileId]);
+  }, [gameState.tiles, gameState.tilesByIds]);
+
+  const resetTimer = useCallback(() => {
+    lastMoveTimeRef.current = performance.now();
+    setCountdown(COMPETITION_COUNTDOWN);
+  }, []);
+
+  const stopTimer = useCallback(() => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = undefined;
+    }
+  }, []);
+
+  const executeMove = useCallback(
+    (type: MoveDirection) => {
+      if (isMovingRef.current) return;
+      isMovingRef.current = true;
+
+      if (isCompetitionRef.current) {
+        const now = performance.now();
+        if (lastMoveTimeRef.current > 0) {
+          const thinkingTime = now - lastMoveTimeRef.current;
+          setCompetitionStats((prev: CompetitionStats) => ({
+            ...prev,
+            totalMoveTime: prev.totalMoveTime + thinkingTime,
+            moveCount: prev.moveCount + 1,
+            avgThinkingTime:
+              (prev.totalMoveTime + thinkingTime) / (prev.moveCount + 1),
+          }));
+        }
+        lastMoveTimeRef.current = now;
+      }
+
+      dispatch({ type });
+      resetTimer();
+    },
+    [resetTimer],
+  );
 
   const moveTiles = useCallback(
     throttle(
-      (type: MoveDirection) => dispatch({ type }),
+      (type: MoveDirection) => executeMove(type),
       mergeAnimationDuration * 1.05,
       { trailing: false },
     ),
-    [dispatch],
+    [executeMove],
   );
 
-  const startGame = () => {
-    dispatch({ type: "reset_game" });
-    dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
-    dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
-  };
+  const startGame = useCallback(
+    (compMode = false) => {
+      stopTimer();
+      setIsCompetition(compMode);
+      isCompetitionRef.current = compMode;
+      setCompetitionStats({
+        avgThinkingTime: 0,
+        timeoutCount: 0,
+        totalMoveTime: 0,
+        moveCount: 0,
+      });
+      lastMoveTimeRef.current = 0;
+      isMovingRef.current = false;
+      setCountdown(COMPETITION_COUNTDOWN);
 
-  const checkGameState = () => {
+      dispatch({ type: "reset_game" });
+      dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
+      dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
+
+      if (compMode) {
+        lastMoveTimeRef.current = performance.now();
+        const tick = (now: number) => {
+          if (!isCompetitionRef.current) return;
+
+          const elapsed = now - lastMoveTimeRef.current;
+          const remaining = Math.max(0, COMPETITION_COUNTDOWN - elapsed);
+          setCountdown(remaining);
+
+          if (remaining <= 0) {
+            setCompetitionStats((prev: CompetitionStats) => ({
+              ...prev,
+              timeoutCount: prev.timeoutCount + 1,
+            }));
+
+            const { board, tiles } = gameStateRef.current;
+            const randomMove = getRandomMove(board, tiles);
+
+            if (randomMove !== null) {
+              executeMove(randomMove);
+            } else {
+              dispatch({ type: "update_status", status: "lost" });
+              stopTimer();
+              return;
+            }
+          }
+
+          animationFrameRef.current = requestAnimationFrame(tick);
+        };
+        animationFrameRef.current = requestAnimationFrame(tick);
+      }
+    },
+    [stopTimer, executeMove],
+  );
+
+  const checkGameState = useCallback(() => {
+    const { tiles } = gameStateRef.current;
     const isWon =
-      Object.values(gameState.tiles).filter((t) => t.value === gameWinTileValue)
+      Object.values(tiles).filter((t: Tile) => t.value === gameWinTileValue)
         .length > 0;
 
     if (isWon) {
       dispatch({ type: "update_status", status: "won" });
+      stopTimer();
       return;
     }
 
-    const { tiles, board } = gameState;
+    const { board } = gameStateRef.current;
 
     const maxIndex = tileCountPerDimension - 1;
     for (let x = 0; x < maxIndex; x += 1) {
       for (let y = 0; y < maxIndex; y += 1) {
         if (
-          isNil(gameState.board[x][y]) ||
-          isNil(gameState.board[x + 1][y]) ||
-          isNil(gameState.board[x][y + 1])
+          isNil(board[x][y]) ||
+          isNil(board[x + 1][y]) ||
+          isNil(board[x][y + 1])
         ) {
           return;
         }
 
-        if (tiles[board[x][y]].value === tiles[board[x + 1][y]].value) {
+        if (tiles[board[x][y]]?.value === tiles[board[x + 1][y]]?.value) {
           return;
         }
 
-        if (tiles[board[x][y]].value === tiles[board[x][y + 1]].value) {
+        if (tiles[board[x][y]]?.value === tiles[board[x][y + 1]]?.value) {
           return;
         }
       }
     }
 
     dispatch({ type: "update_status", status: "lost" });
-  };
+    stopTimer();
+  }, [stopTimer]);
 
   useEffect(() => {
     if (gameState.hasChanged) {
+      isMovingRef.current = false;
       setTimeout(() => {
         dispatch({ type: "clean_up" });
         appendRandomTile();
       }, mergeAnimationDuration);
     }
-  }, [gameState.hasChanged]);
+  }, [gameState.hasChanged, appendRandomTile]);
 
   useEffect(() => {
     if (!gameState.hasChanged) {
       checkGameState();
     }
-  }, [gameState.hasChanged]);
+  }, [gameState.hasChanged, checkGameState]);
+
+  useEffect(() => {
+    return () => {
+      stopTimer();
+    };
+  }, [stopTimer]);
 
   return (
     <GameContext.Provider
       value={{
         score: gameState.score,
-        status: gameState.status,
-        getTiles,
+        status: gameState.status as GameStatus,
+        isCompetition,
+        competitionStats,
+        countdown,
+        countdownDuration: COMPETITION_COUNTDOWN,
         moveTiles,
+        getTiles,
         startGame,
+        resetTimer,
+        stopTimer,
       }}
     >
       {children}

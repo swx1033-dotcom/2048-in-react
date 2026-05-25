@@ -41,3 +41,23 @@
   color: white;
   cursor: pointer;
 }
+
+.modeSelection {
+  margin: 16px 0;
+}
+
+.modeLabel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  color: rgba(240, 240, 240, 1);
+  font-size: 16px;
+}
+
+.modeCheckbox {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}

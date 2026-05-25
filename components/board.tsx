@@ -5,6 +5,7 @@ import Tile from "./tile";
 import { GameContext } from "@/context/game-context";
 import MobileSwiper, { SwipeInput } from "./mobile-swiper";
 import Splash from "./splash";
+import CircularTimer from "./circular-timer";
 
 export default function Board() {
   const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
@@ -12,7 +13,6 @@ export default function Board() {
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // disables page scrolling with keyboard arrows
       e.preventDefault();
 
       switch (e.code) {
@@ -87,6 +87,9 @@ export default function Board() {
   return (
     <MobileSwiper onSwipe={handleSwipe}>
       <div className={styles.board}>
+        <div className={styles.timerContainer}>
+          <CircularTimer />
+        </div>
         {status === "won" && <Splash heading="You won!" type="won" />}
         {status === "lost" && <Splash heading="You lost!" />}
         <div className={styles.tiles}>{renderTiles()}</div>

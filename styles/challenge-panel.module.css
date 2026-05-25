@@ -1,0 +1,151 @@
+.panel {
+  margin: calc(var(--pixel-size) * 2) 0;
+  padding: calc(var(--pixel-size) * 1.5);
+  background: var(--secondary-background);
+  border-radius: calc(var(--pixel-size) * 0.75);
+}
+
+.panel h3 {
+  font-size: calc(var(--pixel-size) * 2.5);
+  margin: 0 0 calc(var(--pixel-size) * 1.5) 0;
+  color: var(--secondary-text-color);
+  text-align: center;
+}
+
+.challengeList {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--pixel-size) * 0.75);
+}
+
+.challengeItem {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--pixel-size) * 1);
+  padding: calc(var(--pixel-size) * 1) calc(var(--pixel-size) * 1.5);
+  background: var(--cell-background);
+  border: calc(var(--pixel-size) * 0.25) solid transparent;
+  border-radius: calc(var(--pixel-size) * 0.5);
+  cursor: pointer;
+  text-align: left;
+  color: var(--primary-text-color);
+  font-weight: bold;
+  font-size: calc(var(--pixel-size) * 1.75);
+  line-height: calc(var(--pixel-size) * 2.5);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.challengeItem:hover {
+  background: var(--tile-background);
+}
+
+.challengeItem.active {
+  border-color: #edcf72;
+  background: #edcf72;
+}
+
+.icon {
+  font-size: calc(var(--pixel-size) * 2.5);
+  flex-shrink: 0;
+}
+
+.name {
+  flex-shrink: 0;
+  min-width: calc(var(--pixel-size) * 10);
+}
+
+.description {
+  font-weight: normal;
+  font-size: calc(var(--pixel-size) * 1.25);
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.startButton {
+  display: block;
+  width: 100%;
+  margin-top: calc(var(--pixel-size) * 1.5);
+  padding: calc(var(--pixel-size) * 1) calc(var(--pixel-size) * 2);
+  background: var(--button-background);
+  border: none;
+  border-radius: calc(var(--pixel-size) * 0.5);
+  color: white;
+  font-size: calc(var(--pixel-size) * 2);
+  font-weight: bold;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.startButton:hover {
+  opacity: 0.85;
+}
+
+.activeInfo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--pixel-size) * 1);
+  margin: calc(var(--pixel-size) * 1) 0;
+  padding: calc(var(--pixel-size) * 1) calc(var(--pixel-size) * 1.5);
+  background: var(--secondary-background);
+  border-radius: calc(var(--pixel-size) * 0.75);
+}
+
+.activeBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--pixel-size) * 0.5);
+}
+
+.badge {
+  display: inline-block;
+  padding: calc(var(--pixel-size) * 0.25) calc(var(--pixel-size) * 1);
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: calc(var(--pixel-size) * 0.5);
+  font-size: calc(var(--pixel-size) * 1.5);
+  color: var(--secondary-text-color);
+  font-weight: bold;
+}
+
+.stopButton {
+  padding: calc(var(--pixel-size) * 0.5) calc(var(--pixel-size) * 1.5);
+  background: #f65e3b;
+  border: none;
+  border-radius: calc(var(--pixel-size) * 0.5);
+  color: white;
+  font-size: calc(var(--pixel-size) * 1.5);
+  font-weight: bold;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.stopButton:hover {
+  opacity: 0.85;
+}
+
+@media (min-width: 512px) {
+  .panel {
+    padding: calc(var(--pixel-size) * 2);
+  }
+
+  .challengeItem {
+    padding: calc(var(--pixel-size) * 1.5) calc(var(--pixel-size) * 2);
+    font-size: calc(var(--pixel-size) * 2);
+    line-height: calc(var(--pixel-size) * 3);
+  }
+
+  .icon {
+    font-size: calc(var(--pixel-size) * 3);
+  }
+
+  .description {
+    font-size: calc(var(--pixel-size) * 1.5);
+  }
+
+  .startButton {
+    font-size: calc(var(--pixel-size) * 2.5);
+    padding: calc(var(--pixel-size) * 1.5) calc(var(--pixel-size) * 3);
+  }
+}

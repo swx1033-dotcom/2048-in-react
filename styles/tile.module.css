@@ -135,3 +135,27 @@
     0 0 30px 10px rgba(243, 215, 116, 0.55556),
     inset 0 0 0 1px rgba(255, 255, 255, 0.33333);
 }
+
+.tile0 {
+  background: #776e65;
+  color: transparent;
+  font-size: 0;
+  position: relative;
+}
+
+.tile0::after {
+  content: "✕";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: rgba(255, 255, 255, 0.5);
+  font-size: calc(var(--pixel-size) * 4);
+  line-height: 1;
+}
+
+@media (min-width: 512px) {
+  .tile0::after {
+    font-size: calc(var(--pixel-size) * 6);
+  }
+}

@@ -1,0 +1,601 @@
+diff --git a/components/board.tsx b/components/board.tsx
+index 57e2531..9575298 100644
+--- a/components/board.tsx
++++ b/components/board.tsx
+@@ -2,9 +2,10 @@ import { useCallback, useContext, useEffect, useRef } from "react";
+ import { Tile as TileModel } from "@/models/tile";
+ import styles from "@/styles/board.module.css";
+ import Tile from "./tile";
+-import { GameContext } from "@/context/game-context";
++import { GameContext, MoveDirection } from "@/context/game-context";
+ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
+ import Splash from "./splash";
++import ChallengeOverlay from "./challenge-overlay";
+ 
+ export default function Board() {
+   const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
+@@ -12,7 +13,6 @@ export default function Board() {
+ 
+   const handleKeyDown = useCallback(
+     (e: KeyboardEvent) => {
+-      // disables page scrolling with keyboard arrows
+       e.preventDefault();
+ 
+       switch (e.code) {
+@@ -89,6 +89,7 @@ export default function Board() {
+       <div className={styles.board}>
+         {status === "won" && <Splash heading="You won!" type="won" />}
+         {status === "lost" && <Splash heading="You lost!" />}
++        <ChallengeOverlay />
+         <div className={styles.tiles}>{renderTiles()}</div>
+         <div className={styles.grid}>{renderGrid()}</div>
+       </div>
+diff --git a/components/score.tsx b/components/score.tsx
+index 5fd1532..2081337 100644
+--- a/components/score.tsx
++++ b/components/score.tsx
+@@ -1,14 +1,30 @@
+ import { GameContext } from "@/context/game-context";
++import { ChallengeContext } from "@/context/challenge-context";
+ import styles from "@/styles/score.module.css";
+ import { useContext } from "react";
+ 
+ export default function Score() {
+   const { score } = useContext(GameContext);
++  const { challengeState } = useContext(ChallengeContext);
++
++  const countdownState = challengeState.pluginStates["countdown"];
++  const timeRemaining = (countdownState?.timeRemaining as number) ?? null;
+ 
+   return (
+     <div className={styles.score}>
+       Score
+       <div>{score}</div>
++      {challengeState.isChallengeMode && timeRemaining !== null && (
++        <div className={`${styles.timer} ${timeRemaining <= 10 ? styles.timerWarning : ""}`}>
++          {formatTime(timeRemaining)}
++        </div>
++      )}
+     </div>
+   );
+ }
++
++function formatTime(seconds: number): string {
++  const mins = Math.floor(seconds / 60);
++  const secs = seconds % 60;
++  return `${mins}:${secs.toString().padStart(2, "0")}`;
++}
+diff --git a/constants.ts b/constants.ts
+index 053a40f..797254c 100644
+--- a/constants.ts
++++ b/constants.ts
+@@ -18,3 +18,24 @@ export const moveAnimationDuration = 200; // ms
+  * Game setup
+  */
+ export const gameWinTileValue = 2048;
++
++/**
++ * Challenge Mode
++ */
++export const obstacleValue = 0;
++
++export const defaultObstaclesPerMove = 1;
++export const defaultMaxObstacles = 4;
++
++export const defaultDecayAmount = 2;
++export const defaultDecayInterval = 3;
++
++export const defaultMaxMergesPerMove = 1;
++
++export const defaultCountdownSeconds = 120;
++
++export const defaultDisableDuration = 1;
++
++export const challengeTickInterval = 1000;
++
++export const maxUndoSteps = 50;
+diff --git a/context/game-context.tsx b/context/game-context.tsx
+index 0b93edc..dfd1e78 100644
+--- a/context/game-context.tsx
++++ b/context/game-context.tsx
+@@ -2,8 +2,10 @@ import {
+   PropsWithChildren,
+   createContext,
+   useCallback,
++  useContext,
+   useEffect,
+   useReducer,
++  useRef,
+ } from "react";
+ import { isNil, throttle } from "lodash";
+ import {
+@@ -12,115 +14,212 @@ import {
+   tileCountPerDimension,
+ } from "@/constants";
+ import { Tile } from "@/models/tile";
++import { ChallengeEffect, GameState, MoveDirection } from "@/models/challenge";
++import { ChallengeContext } from "@/context/challenge-context";
+ import gameReducer, { initialState } from "@/reducers/game-reducer";
+ 
+-type MoveDirection = "move_up" | "move_down" | "move_left" | "move_right";
++export { type MoveDirection } from "@/models/challenge";
+ 
+ export const GameContext = createContext({
+   score: 0,
+-  status: "ongoing",
++  status: "ongoing" as const,
+   moveTiles: (_: MoveDirection) => {},
+   getTiles: () => [] as Tile[],
+   startGame: () => {},
++  undoMove: () => {},
+ });
+ 
++function toGameState(state: typeof initialState): GameState {
++  return {
++    board: state.board,
++    tiles: state.tiles,
++    tilesByIds: state.tilesByIds,
++    hasChanged: state.hasChanged,
++    score: state.score,
++    status: state.status,
++  };
++}
++
+ export default function GameProvider({ children }: PropsWithChildren) {
+   const [gameState, dispatch] = useReducer(gameReducer, initialState);
+-
+-  const getEmptyCells = () => {
++  const {
++    processBeforeAction,
++    processAfterMove,
++    processCheckGameOver,
++    saveHistory,
++    undo,
++    updatePluginState,
++    challengeState,
++  } = useContext(ChallengeContext);
++
++  const gameStateRef = useRef(gameState);
++  gameStateRef.current = gameState;
++
++  const getEmptyCells = useCallback(() => {
+     const results: [number, number][] = [];
+-
+     for (let x = 0; x < tileCountPerDimension; x++) {
+       for (let y = 0; y < tileCountPerDimension; y++) {
+-        if (isNil(gameState.board[y][x])) {
++        if (isNil(gameStateRef.current.board[y][x])) {
+           results.push([x, y]);
+         }
+       }
+     }
+     return results;
+-  };
++  }, []);
+ 
+-  const appendRandomTile = () => {
++  const appendRandomTile = useCallback(() => {
+     const emptyCells = getEmptyCells();
+     if (emptyCells.length > 0) {
+       const cellIndex = Math.floor(Math.random() * emptyCells.length);
+-      const newTile = {
+-        position: emptyCells[cellIndex],
+-        value: 2,
+-      };
+-      dispatch({ type: "create_tile", tile: newTile });
++      dispatch({ type: "create_tile", tile: { position: emptyCells[cellIndex], value: 2 } });
+     }
+-  };
++  }, [getEmptyCells]);
++
++  const applyChallengeEffects = useCallback(
++    (effects: ChallengeEffect[]) => {
++      for (const effect of effects) {
++        switch (effect.type) {
++          case "create_tile":
++            dispatch({
++              type: "create_tile",
++              tile: effect.payload.tile as Tile,
++            });
++            break;
++          case "update_tile":
++            dispatch({
++              type: "update_tile",
++              tileId: effect.payload.tileId as string,
++              value: effect.payload.value as number,
++            });
++            break;
++          case "remove_tile":
++            dispatch({
++              type: "remove_tile",
++              tileId: effect.payload.tileId as string,
++            });
++            break;
++          case "set_plugin_state": {
++            const pluginId = effect.payload.pluginId as string;
++            const pluginState = effect.payload.state as Record<string, unknown>;
++            if (pluginId && pluginState) {
++              updatePluginState(pluginId, pluginState);
++            }
++            break;
++          }
++        }
++      }
++    },
++    [updatePluginState],
++  );
+ 
+-  const getTiles = () => {
++  const getTiles = useCallback(() => {
+     return gameState.tilesByIds.map((tileId) => gameState.tiles[tileId]);
+-  };
++  }, [gameState.tilesByIds, gameState.tiles]);
+ 
+   const moveTiles = useCallback(
+     throttle(
+-      (type: MoveDirection) => dispatch({ type }),
++      (type: MoveDirection) => {
++        const gs = toGameState(gameStateRef.current);
++
++        const processedAction = processBeforeAction({ type }, gs);
++        if (processedAction === null) return;
++
++        saveHistory(gs);
++        dispatch({ type: processedAction.type as MoveDirection });
++      },
+       mergeAnimationDuration * 1.05,
+       { trailing: false },
+     ),
+-    [dispatch],
++    [dispatch, processBeforeAction, saveHistory],
+   );
+ 
+-  const startGame = () => {
++  const startGame = useCallback(() => {
+     dispatch({ type: "reset_game" });
+     dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
+     dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
+-  };
++  }, []);
++
++  const undoMove = useCallback(() => {
++    const entry = undo();
++    if (entry) {
++      dispatch({ type: "restore_state", state: entry.gameState as typeof initialState });
++    }
++  }, [undo]);
++
++  const checkGameState = useCallback(() => {
++    const gs = toGameState(gameStateRef.current);
++
++    const challengeGameOver = processCheckGameOver(gs);
++    if (challengeGameOver) {
++      dispatch({ type: "update_status", status: "lost" });
++      return;
++    }
+ 
+-  const checkGameState = () => {
+     const isWon =
+-      Object.values(gameState.tiles).filter((t) => t.value === gameWinTileValue)
+-        .length > 0;
++      Object.values(gameStateRef.current.tiles).filter(
++        (t) => t.value === gameWinTileValue,
++      ).length > 0;
+ 
+     if (isWon) {
+       dispatch({ type: "update_status", status: "won" });
+       return;
+     }
+ 
+-    const { tiles, board } = gameState;
++    const { tiles, board } = gameStateRef.current;
+ 
+     const maxIndex = tileCountPerDimension - 1;
+     for (let x = 0; x < maxIndex; x += 1) {
+       for (let y = 0; y < maxIndex; y += 1) {
+         if (
+-          isNil(gameState.board[x][y]) ||
+-          isNil(gameState.board[x + 1][y]) ||
+-          isNil(gameState.board[x][y + 1])
++          isNil(gameStateRef.current.board[x][y]) ||
++          isNil(gameStateRef.current.board[x + 1][y]) ||
++          isNil(gameStateRef.current.board[x][y + 1])
+         ) {
+           return;
+         }
+ 
+-        if (tiles[board[x][y]].value === tiles[board[x + 1][y]].value) {
++        const currentTile = tiles[board[x][y]];
++        const rightTile = tiles[board[x + 1][y]];
++        const downTile = tiles[board[x][y + 1]];
++
++        if (!currentTile.isObstacle && !rightTile.isObstacle && currentTile.value === rightTile.value) {
+           return;
+         }
+ 
+-        if (tiles[board[x][y]].value === tiles[board[x][y + 1]].value) {
++        if (!currentTile.isObstacle && !downTile.isObstacle && currentTile.value === downTile.value) {
+           return;
+         }
+       }
+     }
+ 
+     dispatch({ type: "update_status", status: "lost" });
+-  };
++  }, [processCheckGameOver]);
++
++  const afterCleanUpRef = useRef(false);
+ 
+   useEffect(() => {
+     if (gameState.hasChanged) {
++      afterCleanUpRef.current = true;
+       setTimeout(() => {
+         dispatch({ type: "clean_up" });
+         appendRandomTile();
+       }, mergeAnimationDuration);
+     }
+-  }, [gameState.hasChanged]);
++  }, [gameState.hasChanged, appendRandomTile]);
+ 
+   useEffect(() => {
+-    if (!gameState.hasChanged) {
++    if (!gameState.hasChanged && afterCleanUpRef.current) {
++      afterCleanUpRef.current = false;
++
++      if (challengeState.isChallengeMode) {
++        const gs = toGameState(gameStateRef.current);
++        const effects = processAfterMove(gs);
++        applyChallengeEffects(effects);
++      }
++
+       checkGameState();
+     }
+-  }, [gameState.hasChanged]);
++  }, [gameState.hasChanged, challengeState.isChallengeMode, processAfterMove, applyChallengeEffects, checkGameState]);
+ 
+   return (
+     <GameContext.Provider
+@@ -130,6 +229,7 @@ export default function GameProvider({ children }: PropsWithChildren) {
+         getTiles,
+         moveTiles,
+         startGame,
++        undoMove,
+       }}
+     >
+       {children}
+diff --git a/models/tile.ts b/models/tile.ts
+index df4c620..8bfe326 100644
+--- a/models/tile.ts
++++ b/models/tile.ts
+@@ -2,6 +2,8 @@ export type Tile = {
+   id?: string;
+   position: [number, number];
+   value: number;
++  isObstacle?: boolean;
++  decayCounter?: number;
+ };
+ 
+ export type TileMap = { [id: string]: Tile };
+diff --git a/pages/_app.tsx b/pages/_app.tsx
+index 52b78a0..37f4e25 100644
+--- a/pages/_app.tsx
++++ b/pages/_app.tsx
+@@ -1,11 +1,14 @@
+ import type { AppProps } from "next/app";
++import ChallengeProvider from "@/context/challenge-context";
+ import GameProvider from "@/context/game-context";
+ import "@/styles/globals.css";
+ 
+ export default function App({ Component, pageProps }: AppProps) {
+   return (
+-    <GameProvider>
+-      <Component {...pageProps} />
+-    </GameProvider>
++    <ChallengeProvider>
++      <GameProvider>
++        <Component {...pageProps} />
++      </GameProvider>
++    </ChallengeProvider>
+   );
+ }
+diff --git a/pages/index.tsx b/pages/index.tsx
+index 75c6e8b..cc9beac 100644
+--- a/pages/index.tsx
++++ b/pages/index.tsx
+@@ -2,6 +2,7 @@ import Head from "next/head";
+ import Image from "next/image";
+ import Board from "@/components/board";
+ import Score from "@/components/score";
++import ChallengePanel from "@/components/challenge-panel";
+ import styles from "@/styles/index.module.css";
+ 
+ export default function Home() {
+@@ -29,6 +30,7 @@ export default function Home() {
+       </header>
+       <main>
+         <Board />
++        <ChallengePanel />
+       </main>
+       <div>
+         <h2>🚀 Create your own game</h2>
+diff --git a/reducers/game-reducer.ts b/reducers/game-reducer.ts
+index 47d6226..3f38df7 100644
+--- a/reducers/game-reducer.ts
++++ b/reducers/game-reducer.ts
+@@ -21,7 +21,10 @@ type Action =
+   | { type: "move_left" }
+   | { type: "move_right" }
+   | { type: "reset_game" }
+-  | { type: "update_status"; status: GameStatus };
++  | { type: "update_status"; status: GameStatus }
++  | { type: "update_tile"; tileId: string; value: number }
++  | { type: "remove_tile"; tileId: string }
++  | { type: "restore_state"; state: State };
+ 
+ function createBoard() {
+   const board: string[][] = [];
+@@ -104,7 +107,14 @@ export default function gameReducer(
+           const currentTile = state.tiles[tileId];
+ 
+           if (!isNil(tileId)) {
+-            if (previousTile?.value === currentTile.value) {
++            if (currentTile.isObstacle) {
++              newBoard[y][x] = tileId;
++              newTiles[tileId] = { ...currentTile };
++              previousTile = undefined;
++              continue;
++            }
++
++            if (previousTile?.value === currentTile.value && !previousTile.isObstacle) {
+               score += previousTile.value * 2;
+               newTiles[previousTile.id as string] = {
+                 ...previousTile,
+@@ -155,7 +165,14 @@ export default function gameReducer(
+           const currentTile = state.tiles[tileId];
+ 
+           if (!isNil(tileId)) {
+-            if (previousTile?.value === currentTile.value) {
++            if (currentTile.isObstacle) {
++              newBoard[y][x] = tileId;
++              newTiles[tileId] = { ...currentTile };
++              previousTile = undefined;
++              continue;
++            }
++
++            if (previousTile?.value === currentTile.value && !previousTile.isObstacle) {
+               score += previousTile.value * 2;
+               newTiles[previousTile.id as string] = {
+                 ...previousTile,
+@@ -206,7 +223,14 @@ export default function gameReducer(
+           const currentTile = state.tiles[tileId];
+ 
+           if (!isNil(tileId)) {
+-            if (previousTile?.value === currentTile.value) {
++            if (currentTile.isObstacle) {
++              newBoard[y][x] = tileId;
++              newTiles[tileId] = { ...currentTile };
++              previousTile = undefined;
++              continue;
++            }
++
++            if (previousTile?.value === currentTile.value && !previousTile.isObstacle) {
+               score += previousTile.value * 2;
+               newTiles[previousTile.id as string] = {
+                 ...previousTile,
+@@ -257,7 +281,14 @@ export default function gameReducer(
+           const currentTile = state.tiles[tileId];
+ 
+           if (!isNil(tileId)) {
+-            if (previousTile?.value === currentTile.value) {
++            if (currentTile.isObstacle) {
++              newBoard[y][x] = tileId;
++              newTiles[tileId] = { ...currentTile };
++              previousTile = undefined;
++              continue;
++            }
++
++            if (previousTile?.value === currentTile.value && !previousTile.isObstacle) {
+               score += previousTile.value * 2;
+               newTiles[previousTile.id as string] = {
+                 ...previousTile,
+@@ -300,6 +331,36 @@ export default function gameReducer(
+         ...state,
+         status: action.status,
+       };
++    case "update_tile": {
++      const tile = state.tiles[action.tileId];
++      if (isNil(tile)) return state;
++      return {
++        ...state,
++        tiles: {
++          ...state.tiles,
++          [action.tileId]: {
++            ...tile,
++            value: action.value,
++          },
++        },
++      };
++    }
++    case "remove_tile": {
++      const tile = state.tiles[action.tileId];
++      if (isNil(tile)) return state;
++      const [x, y] = tile.position;
++      const newBoard = JSON.parse(JSON.stringify(state.board));
++      newBoard[y][x] = undefined;
++      const { [action.tileId]: _, ...remainingTiles } = state.tiles;
++      return {
++        ...state,
++        board: newBoard,
++        tiles: remainingTiles,
++        tilesByIds: state.tilesByIds.filter((id) => id !== action.tileId),
++      };
++    }
++    case "restore_state":
++      return action.state;
+     default:
+       return state;
+   }
+diff --git a/styles/score.module.css b/styles/score.module.css
+index 8871fc5..56e4073 100644
+--- a/styles/score.module.css
++++ b/styles/score.module.css
+@@ -15,6 +15,27 @@
+   color: var(--secondary-text-color);
+ }
+ 
++.timer {
++  font-size: calc(var(--pixel-size) * 2);
++  color: #edcf72;
++  margin-top: calc(var(--pixel-size) * 0.25);
++  font-variant-numeric: tabular-nums;
++}
++
++.timerWarning {
++  color: #f65e3b;
++  animation: scorePulse 0.5s ease-in-out infinite alternate;
++}
++
++@keyframes scorePulse {
++  from {
++    opacity: 0.6;
++  }
++  to {
++    opacity: 1;
++  }
++}
++
+ @media (min-width: 512px) {
+   .score {
+     border: calc(var(--pixel-size) * 1) solid var(--secondary-background);
+diff --git a/styles/tile.module.css b/styles/tile.module.css
+index d710fbb..f387155 100644
+--- a/styles/tile.module.css
++++ b/styles/tile.module.css
+@@ -135,3 +135,27 @@
+     0 0 30px 10px rgba(243, 215, 116, 0.55556),
+     inset 0 0 0 1px rgba(255, 255, 255, 0.33333);
+ }
++
++.tile0 {
++  background: #776e65;
++  color: transparent;
++  font-size: 0;
++  position: relative;
++}
++
++.tile0::after {
++  content: "✕";
++  position: absolute;
++  top: 50%;
++  left: 50%;
++  transform: translate(-50%, -50%);
++  color: rgba(255, 255, 255, 0.5);
++  font-size: calc(var(--pixel-size) * 4);
++  line-height: 1;
++}
++
++@media (min-width: 512px) {
++  .tile0::after {
++    font-size: calc(var(--pixel-size) * 6);
++  }
++}

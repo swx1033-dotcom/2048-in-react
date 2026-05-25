@@ -21,7 +21,10 @@ type Action =
   | { type: "move_left" }
   | { type: "move_right" }
   | { type: "reset_game" }
-  | { type: "update_status"; status: GameStatus };
+  | { type: "update_status"; status: GameStatus }
+  | { type: "update_tile"; tileId: string; value: number }
+  | { type: "remove_tile"; tileId: string }
+  | { type: "restore_state"; state: State };
 
 function createBoard() {
   const board: string[][] = [];
@@ -104,7 +107,14 @@ export default function gameReducer(
           const currentTile = state.tiles[tileId];
 
           if (!isNil(tileId)) {
-            if (previousTile?.value === currentTile.value) {
+            if (currentTile.isObstacle) {
+              newBoard[y][x] = tileId;
+              newTiles[tileId] = { ...currentTile };
+              previousTile = undefined;
+              continue;
+            }
+
+            if (previousTile?.value === currentTile.value && !previousTile.isObstacle) {
               score += previousTile.value * 2;
               newTiles[previousTile.id as string] = {
                 ...previousTile,
@@ -155,7 +165,14 @@ export default function gameReducer(
           const currentTile = state.tiles[tileId];
 
           if (!isNil(tileId)) {
-            if (previousTile?.value === currentTile.value) {
+            if (currentTile.isObstacle) {
+              newBoard[y][x] = tileId;
+              newTiles[tileId] = { ...currentTile };
+              previousTile = undefined;
+              continue;
+            }
+
+            if (previousTile?.value === currentTile.value && !previousTile.isObstacle) {
               score += previousTile.value * 2;
               newTiles[previousTile.id as string] = {
                 ...previousTile,
@@ -206,7 +223,14 @@ export default function gameReducer(
           const currentTile = state.tiles[tileId];
 
           if (!isNil(tileId)) {
-            if (previousTile?.value === currentTile.value) {
+            if (currentTile.isObstacle) {
+              newBoard[y][x] = tileId;
+              newTiles[tileId] = { ...currentTile };
+              previousTile = undefined;
+              continue;
+            }
+
+            if (previousTile?.value === currentTile.value && !previousTile.isObstacle) {
               score += previousTile.value * 2;
               newTiles[previousTile.id as string] = {
                 ...previousTile,
@@ -257,7 +281,14 @@ export default function gameReducer(
           const currentTile = state.tiles[tileId];
 
           if (!isNil(tileId)) {
-            if (previousTile?.value === currentTile.value) {
+            if (currentTile.isObstacle) {
+              newBoard[y][x] = tileId;
+              newTiles[tileId] = { ...currentTile };
+              previousTile = undefined;
+              continue;
+            }
+
+            if (previousTile?.value === currentTile.value && !previousTile.isObstacle) {
               score += previousTile.value * 2;
               newTiles[previousTile.id as string] = {
                 ...previousTile,
@@ -300,6 +331,36 @@ export default function gameReducer(
         ...state,
         status: action.status,
       };
+    case "update_tile": {
+      const tile = state.tiles[action.tileId];
+      if (isNil(tile)) return state;
+      return {
+        ...state,
+        tiles: {
+          ...state.tiles,
+          [action.tileId]: {
+            ...tile,
+            value: action.value,
+          },
+        },
+      };
+    }
+    case "remove_tile": {
+      const tile = state.tiles[action.tileId];
+      if (isNil(tile)) return state;
+      const [x, y] = tile.position;
+      const newBoard = JSON.parse(JSON.stringify(state.board));
+      newBoard[y][x] = undefined;
+      const { [action.tileId]: _, ...remainingTiles } = state.tiles;
+      return {
+        ...state,
+        board: newBoard,
+        tiles: remainingTiles,
+        tilesByIds: state.tilesByIds.filter((id) => id !== action.tileId),
+      };
+    }
+    case "restore_state":
+      return action.state;
     default:
       return state;
   }

@@ -2,9 +2,10 @@ import { useCallback, useContext, useEffect, useRef } from "react";
 import { Tile as TileModel } from "@/models/tile";
 import styles from "@/styles/board.module.css";
 import Tile from "./tile";
-import { GameContext } from "@/context/game-context";
+import { GameContext, MoveDirection } from "@/context/game-context";
 import MobileSwiper, { SwipeInput } from "./mobile-swiper";
 import Splash from "./splash";
+import ChallengeOverlay from "./challenge-overlay";
 
 export default function Board() {
   const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
@@ -12,7 +13,6 @@ export default function Board() {
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // disables page scrolling with keyboard arrows
       e.preventDefault();
 
       switch (e.code) {
@@ -89,6 +89,7 @@ export default function Board() {
       <div className={styles.board}>
         {status === "won" && <Splash heading="You won!" type="won" />}
         {status === "lost" && <Splash heading="You lost!" />}
+        <ChallengeOverlay />
         <div className={styles.tiles}>{renderTiles()}</div>
         <div className={styles.grid}>{renderGrid()}</div>
       </div>

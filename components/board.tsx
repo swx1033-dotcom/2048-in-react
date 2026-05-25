@@ -7,12 +7,37 @@ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
 import Splash from "./splash";
 
 export default function Board() {
-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
+  const {
+    getTiles,
+    isDemoMode,
+    moveTiles,
+    startDemo,
+    startGame,
+    status,
+    stopDemo,
+  } = useContext(GameContext);
   const initialized = useRef(false);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // disables page scrolling with keyboard arrows
+      if (isDemoMode) {
+        if (e.code === "Escape") {
+          e.preventDefault();
+          stopDemo();
+        }
+
+        return;
+      }
+
+      if (
+        e.code !== "ArrowUp" &&
+        e.code !== "ArrowDown" &&
+        e.code !== "ArrowLeft" &&
+        e.code !== "ArrowRight"
+      ) {
+        return;
+      }
+
       e.preventDefault();
 
       switch (e.code) {
@@ -30,11 +55,15 @@ export default function Board() {
           break;
       }
     },
-    [moveTiles],
+    [isDemoMode, moveTiles, stopDemo],
   );
 
   const handleSwipe = useCallback(
     ({ deltaX, deltaY }: SwipeInput) => {
+      if (isDemoMode) {
+        return;
+      }
+
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
         if (deltaX > 0) {
           moveTiles("move_right");
@@ -49,7 +78,7 @@ export default function Board() {
         }
       }
     },
-    [moveTiles],
+    [isDemoMode, moveTiles],
   );
 
   const renderGrid = () => {
@@ -85,10 +114,23 @@ export default function Board() {
   }, [handleKeyDown]);
 
   return (
-    <MobileSwiper onSwipe={handleSwipe}>
+    <MobileSwiper disabled={isDemoMode} onSwipe={handleSwipe}>
       <div className={styles.board}>
+        {status === "ongoing" && (
+          <div className={styles.controls}>
+            <button
+              className={styles.demoButton}
+              onClick={isDemoMode ? stopDemo : () => startDemo()}
+            >
+              {isDemoMode ? "■ 停止演示" : "▶ 自动演示"}
+            </button>
+          </div>
+        )}
         {status === "won" && <Splash heading="You won!" type="won" />}
-        {status === "lost" && <Splash heading="You lost!" />}
+        {status === "lost" && <Splash heading="You lost!" type="lost" />}
+        {status === "ongoing" && isDemoMode && (
+          <Splash heading="演示中…" type="demo" />
+        )}
         <div className={styles.tiles}>{renderTiles()}</div>
         <div className={styles.grid}>{renderGrid()}</div>
       </div>

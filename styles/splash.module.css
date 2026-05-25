@@ -14,20 +14,37 @@
 }
 
 .win {
-  background: rgba(237, 194, 46, 0.6);
+  background: rgba(237, 194, 46, 0.8);
   color: white;
+}
+
+.lost {
+  background: rgba(120, 99, 88, 0.82);
+  color: white;
+}
+
+.demo {
+  background: rgba(143, 122, 102, 0.72);
 }
 
 .splash > div {
   margin: 0 auto;
 }
 
-.splash > div > button {
-  margin: calc(var(--pixel-size) * 3) auto;
-}
-
 .splash > div > h1 {
   color: rgba(240, 240, 240, 1);
+}
+
+.actions {
+  display: flex;
+  justify-content: center;
+  gap: calc(var(--pixel-size) * 1);
+  margin-top: calc(var(--pixel-size) * 3);
+}
+
+.hint {
+  color: rgba(240, 240, 240, 0.92);
+  font-weight: bold;
 }
 
 .button {
@@ -40,4 +57,11 @@
   font-weight: bold;
   color: white;
   cursor: pointer;
+}
+
+@media (max-width: 511px) {
+  .actions {
+    flex-direction: column;
+    align-items: center;
+  }
 }

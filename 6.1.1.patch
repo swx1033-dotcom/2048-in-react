@@ -1,0 +1,636 @@
+diff --git a/__tests__/context/game-context.test.tsx b/__tests__/context/game-context.test.tsx
+index 7305f3c..8086b35 100644
+--- a/__tests__/context/game-context.test.tsx
++++ b/__tests__/context/game-context.test.tsx
+@@ -1,4 +1,4 @@
+-import { fireEvent, render } from "@testing-library/react";
++import { act, fireEvent, render } from "@testing-library/react";
+ import GameProvider from "@/context/game-context";
+ import Board from "@/components/board";
+ import Score from "@/components/score";
+@@ -79,4 +79,60 @@ describe("GameProvider", () => {
+       expect(container.querySelector(".score > div")?.textContent).toEqual("4");
+     });
+   });
++
++  describe("demo mode", () => {
++    beforeEach(() => {
++      jest.useFakeTimers();
++      jest.spyOn(Math, "random").mockReturnValue(0);
++    });
++
++    afterEach(() => {
++      jest.runOnlyPendingTimers();
++      jest.useRealTimers();
++      jest.restoreAllMocks();
++    });
++
++    it("should start automatic demo and perform moves", () => {
++      const { container, getByRole, getByText } = render(
++        <GameProvider>
++          <Board />
++        </GameProvider>,
++      );
++
++      fireEvent.click(getByRole("button", { name: "▶ 自动演示" }));
++
++      expect(getByText("演示中…")).toBeInTheDocument();
++
++      act(() => {
++        jest.advanceTimersByTime(500);
++      });
++
++      expect(container.querySelectorAll(".tile4")).toHaveLength(1);
++    });
++
++    it("should ignore manual input and stop on Escape", () => {
++      const { container, getByRole, queryByText } = render(
++        <GameProvider>
++          <Score />
++          <Board />
++        </GameProvider>,
++      );
++
++      fireEvent.click(getByRole("button", { name: "▶ 自动演示" }));
++      fireEvent.keyDown(window, {
++        key: "ArrowUp",
++        code: "ArrowUp",
++      });
++
++      expect(container.querySelector(".score > div")?.textContent).toEqual("0");
++
++      fireEvent.keyDown(window, {
++        key: "Escape",
++        code: "Escape",
++      });
++
++      expect(queryByText("演示中…")).not.toBeInTheDocument();
++      expect(getByRole("button", { name: "▶ 自动演示" })).toBeInTheDocument();
++    });
++  });
+ });
+diff --git a/components/board.tsx b/components/board.tsx
+index 57e2531..59a964e 100644
+--- a/components/board.tsx
++++ b/components/board.tsx
+@@ -7,12 +7,37 @@ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
+ import Splash from "./splash";
+ 
+ export default function Board() {
+-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
++  const {
++    getTiles,
++    isDemoMode,
++    moveTiles,
++    startDemo,
++    startGame,
++    status,
++    stopDemo,
++  } = useContext(GameContext);
+   const initialized = useRef(false);
+ 
+   const handleKeyDown = useCallback(
+     (e: KeyboardEvent) => {
+-      // disables page scrolling with keyboard arrows
++      if (isDemoMode) {
++        if (e.code === "Escape") {
++          e.preventDefault();
++          stopDemo();
++        }
++
++        return;
++      }
++
++      if (
++        e.code !== "ArrowUp" &&
++        e.code !== "ArrowDown" &&
++        e.code !== "ArrowLeft" &&
++        e.code !== "ArrowRight"
++      ) {
++        return;
++      }
++
+       e.preventDefault();
+ 
+       switch (e.code) {
+@@ -30,11 +55,15 @@ export default function Board() {
+           break;
+       }
+     },
+-    [moveTiles],
++    [isDemoMode, moveTiles, stopDemo],
+   );
+ 
+   const handleSwipe = useCallback(
+     ({ deltaX, deltaY }: SwipeInput) => {
++      if (isDemoMode) {
++        return;
++      }
++
+       if (Math.abs(deltaX) > Math.abs(deltaY)) {
+         if (deltaX > 0) {
+           moveTiles("move_right");
+@@ -49,7 +78,7 @@ export default function Board() {
+         }
+       }
+     },
+-    [moveTiles],
++    [isDemoMode, moveTiles],
+   );
+ 
+   const renderGrid = () => {
+@@ -85,10 +114,23 @@ export default function Board() {
+   }, [handleKeyDown]);
+ 
+   return (
+-    <MobileSwiper onSwipe={handleSwipe}>
++    <MobileSwiper disabled={isDemoMode} onSwipe={handleSwipe}>
+       <div className={styles.board}>
++        {status === "ongoing" && (
++          <div className={styles.controls}>
++            <button
++              className={styles.demoButton}
++              onClick={isDemoMode ? stopDemo : () => startDemo()}
++            >
++              {isDemoMode ? "■ 停止演示" : "▶ 自动演示"}
++            </button>
++          </div>
++        )}
+         {status === "won" && <Splash heading="You won!" type="won" />}
+-        {status === "lost" && <Splash heading="You lost!" />}
++        {status === "lost" && <Splash heading="You lost!" type="lost" />}
++        {status === "ongoing" && isDemoMode && (
++          <Splash heading="演示中…" type="demo" />
++        )}
+         <div className={styles.tiles}>{renderTiles()}</div>
+         <div className={styles.grid}>{renderGrid()}</div>
+       </div>
+diff --git a/components/mobile-swiper.tsx b/components/mobile-swiper.tsx
+index 19e4223..3f3e8be 100644
+--- a/components/mobile-swiper.tsx
++++ b/components/mobile-swiper.tsx
+@@ -10,27 +10,35 @@ export type SwipeInput = { deltaX: number; deltaY: number };
+ 
+ type MobileSwiperProps = PropsWithChildren<{
+   onSwipe: (_: SwipeInput) => void;
++  disabled?: boolean;
+ }>;
+ 
+-export default function MobileSwiper({ children, onSwipe }: MobileSwiperProps) {
++export default function MobileSwiper({
++  children,
++  disabled = false,
++  onSwipe,
++}: MobileSwiperProps) {
+   const wrapperRef = useRef<HTMLDivElement>(null);
+   const [startX, setStartX] = useState(0);
+   const [startY, setStartY] = useState(0);
+ 
+-  const handleTouchStart = useCallback((e: TouchEvent) => {
+-    if (!wrapperRef.current?.contains(e.target as Node)) {
+-      return;
+-    }
++  const handleTouchStart = useCallback(
++    (e: TouchEvent) => {
++      if (disabled || !wrapperRef.current?.contains(e.target as Node)) {
++        return;
++      }
+ 
+-    e.preventDefault();
++      e.preventDefault();
+ 
+-    setStartX(e.touches[0].clientX);
+-    setStartY(e.touches[0].clientY);
+-  }, []);
++      setStartX(e.touches[0].clientX);
++      setStartY(e.touches[0].clientY);
++    },
++    [disabled],
++  );
+ 
+   const handleTouchEnd = useCallback(
+     (e: TouchEvent) => {
+-      if (!wrapperRef.current?.contains(e.target as Node)) {
++      if (disabled || !wrapperRef.current?.contains(e.target as Node)) {
+         return;
+       }
+ 
+@@ -46,7 +54,7 @@ export default function MobileSwiper({ children, onSwipe }: MobileSwiperProps) {
+       setStartX(0);
+       setStartY(0);
+     },
+-    [startX, startY, onSwipe],
++    [disabled, onSwipe, startX, startY],
+   );
+ 
+   useEffect(() => {
+@@ -57,7 +65,7 @@ export default function MobileSwiper({ children, onSwipe }: MobileSwiperProps) {
+       window.removeEventListener("touchstart", handleTouchStart);
+       window.removeEventListener("touchend", handleTouchEnd);
+     };
+-  }, [handleTouchStart, handleTouchEnd]);
++  }, [handleTouchEnd, handleTouchStart]);
+ 
+   return <div ref={wrapperRef}>{children}</div>;
+ }
+diff --git a/components/splash.tsx b/components/splash.tsx
+index de37256..6d10d35 100644
+--- a/components/splash.tsx
++++ b/components/splash.tsx
+@@ -2,16 +2,34 @@ import { GameContext } from "@/context/game-context";
+ import styles from "@/styles/splash.module.css";
+ import { useContext } from "react";
+ 
+-export default function Splash({ heading = "You won!", type = "" }) {
+-  const { startGame } = useContext(GameContext);
++type SplashProps = {
++  heading?: string;
++  type?: "" | "won" | "lost" | "demo";
++};
++
++export default function Splash({ heading = "You won!", type = "" }: SplashProps) {
++  const { startDemo, startGame } = useContext(GameContext);
++  const isResult = type === "won" || type === "lost";
+ 
+   return (
+-    <div className={`${styles.splash} ${type === "won" && styles.win}`}>
++    <div
++      className={`${styles.splash} ${type === "won" ? styles.win : ""} ${
++        type === "lost" ? styles.lost : ""
++      } ${type === "demo" ? styles.demo : ""}`}
++    >
+       <div>
+         <h1>{heading}</h1>
+-        <button className={styles.button} onClick={startGame}>
+-          Play again
+-        </button>
++        {type === "demo" && <p className={styles.hint}>按 Esc 可停止演示</p>}
++        {isResult && (
++          <div className={styles.actions}>
++            <button className={styles.button} onClick={startGame}>
++              Play again
++            </button>
++            <button className={styles.button} onClick={() => startDemo()}>
++              ▶ 自动演示
++            </button>
++          </div>
++        )}
+       </div>
+     </div>
+   );
+diff --git a/context/game-context.tsx b/context/game-context.tsx
+index 0b93edc..81423ef 100644
+--- a/context/game-context.tsx
++++ b/context/game-context.tsx
+@@ -4,28 +4,85 @@ import {
+   useCallback,
+   useEffect,
+   useReducer,
++  useRef,
++  useState,
+ } from "react";
+-import { isNil, throttle } from "lodash";
++import { isNil } from "lodash";
+ import {
+   gameWinTileValue,
+   mergeAnimationDuration,
++  moveAnimationDuration,
+   tileCountPerDimension,
+ } from "@/constants";
+ import { Tile } from "@/models/tile";
+ import gameReducer, { initialState } from "@/reducers/game-reducer";
+ 
+-type MoveDirection = "move_up" | "move_down" | "move_left" | "move_right";
++type GameStatus = "ongoing" | "won" | "lost";
++export type MoveDirection =
++  | "move_up"
++  | "move_down"
++  | "move_left"
++  | "move_right";
+ 
+-export const GameContext = createContext({
++type GameContextValue = {
++  score: number;
++  status: GameStatus;
++  isDemoMode: boolean;
++  demoInterval: number;
++  moveTiles: (_: MoveDirection) => boolean;
++  getTiles: () => Tile[];
++  startGame: () => void;
++  startDemo: (_?: number) => void;
++  stopDemo: () => void;
++};
++
++const defaultDemoInterval = 500;
++const demoMoveDirections: MoveDirection[] = [
++  "move_up",
++  "move_right",
++  "move_down",
++  "move_left",
++];
++
++export const GameContext = createContext<GameContextValue>({
+   score: 0,
+   status: "ongoing",
+-  moveTiles: (_: MoveDirection) => {},
++  isDemoMode: false,
++  demoInterval: defaultDemoInterval,
++  moveTiles: () => false,
+   getTiles: () => [] as Tile[],
+   startGame: () => {},
++  startDemo: () => {},
++  stopDemo: () => {},
+ });
+ 
+ export default function GameProvider({ children }: PropsWithChildren) {
+   const [gameState, dispatch] = useReducer(gameReducer, initialState);
++  const [isDemoMode, setIsDemoMode] = useState(false);
++  const [demoInterval, setDemoInterval] = useState(defaultDemoInterval);
++  const isMoveLocked = useRef(false);
++  const moveLockTimeout = useRef<ReturnType<typeof window.setTimeout>>();
++  const cleanUpTimeout = useRef<ReturnType<typeof window.setTimeout>>();
++
++  const setMoveLock = useCallback((locked: boolean) => {
++    isMoveLocked.current = locked;
++  }, []);
++
++  const clearMoveLock = useCallback(() => {
++    if (moveLockTimeout.current) {
++      window.clearTimeout(moveLockTimeout.current);
++    }
++
++    setMoveLock(false);
++  }, [setMoveLock]);
++
++  const lockMove = useCallback(() => {
++    clearMoveLock();
++    setMoveLock(true);
++    moveLockTimeout.current = window.setTimeout(() => {
++      setMoveLock(false);
++    }, moveAnimationDuration);
++  }, [clearMoveLock, setMoveLock]);
+ 
+   const getEmptyCells = () => {
+     const results: [number, number][] = [];
+@@ -56,20 +113,49 @@ export default function GameProvider({ children }: PropsWithChildren) {
+     return gameState.tilesByIds.map((tileId) => gameState.tiles[tileId]);
+   };
+ 
+-  const moveTiles = useCallback(
+-    throttle(
+-      (type: MoveDirection) => dispatch({ type }),
+-      mergeAnimationDuration * 1.05,
+-      { trailing: false },
+-    ),
+-    [dispatch],
+-  );
+-
+-  const startGame = () => {
++  const resetGame = useCallback(() => {
++    clearMoveLock();
+     dispatch({ type: "reset_game" });
+     dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
+     dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
+-  };
++  }, [clearMoveLock]);
++
++  const moveTiles = useCallback(
++    (type: MoveDirection) => {
++      if (gameState.status !== "ongoing" || isMoveLocked.current) {
++        return false;
++      }
++
++      lockMove();
++      dispatch({ type });
++      return true;
++    },
++    [gameState.status, lockMove],
++  );
++
++  const startGame = useCallback(() => {
++    setIsDemoMode(false);
++    resetGame();
++  }, [resetGame]);
++
++  const startDemo = useCallback(
++    (interval = defaultDemoInterval) => {
++      setDemoInterval(interval);
++      clearMoveLock();
++
++      if (gameState.status !== "ongoing") {
++        resetGame();
++      }
++
++      setIsDemoMode(true);
++    },
++    [clearMoveLock, gameState.status, resetGame],
++  );
++
++  const stopDemo = useCallback(() => {
++    setIsDemoMode(false);
++    clearMoveLock();
++  }, [clearMoveLock]);
+ 
+   const checkGameState = () => {
+     const isWon =
+@@ -107,12 +193,32 @@ export default function GameProvider({ children }: PropsWithChildren) {
+     dispatch({ type: "update_status", status: "lost" });
+   };
+ 
++  const getDemoMove = useCallback(() => {
++    const availableMoves = demoMoveDirections.filter((direction) => {
++      const nextState = gameReducer(gameState, { type: direction });
++      return nextState.hasChanged;
++    });
++
++    if (availableMoves.length === 0) {
++      return undefined;
++    }
++
++    const moveIndex = Math.floor(Math.random() * availableMoves.length);
++    return availableMoves[moveIndex];
++  }, [gameState]);
++
+   useEffect(() => {
+     if (gameState.hasChanged) {
+-      setTimeout(() => {
++      cleanUpTimeout.current = window.setTimeout(() => {
+         dispatch({ type: "clean_up" });
+         appendRandomTile();
+       }, mergeAnimationDuration);
++
++      return () => {
++        if (cleanUpTimeout.current) {
++          window.clearTimeout(cleanUpTimeout.current);
++        }
++      };
+     }
+   }, [gameState.hasChanged]);
+ 
+@@ -122,14 +228,58 @@ export default function GameProvider({ children }: PropsWithChildren) {
+     }
+   }, [gameState.hasChanged]);
+ 
++  useEffect(() => {
++    if (!isDemoMode) {
++      return;
++    }
++
++    if (gameState.status !== "ongoing") {
++      setIsDemoMode(false);
++      return;
++    }
++
++    const intervalId = window.setInterval(() => {
++      if (isMoveLocked.current) {
++        return;
++      }
++
++      const move = getDemoMove();
++
++      if (!move) {
++        setIsDemoMode(false);
++        return;
++      }
++
++      moveTiles(move);
++    }, demoInterval);
++
++    return () => {
++      window.clearInterval(intervalId);
++    };
++  }, [demoInterval, gameState.status, getDemoMove, isDemoMode, moveTiles]);
++
++  useEffect(() => {
++    return () => {
++      clearMoveLock();
++
++      if (cleanUpTimeout.current) {
++        window.clearTimeout(cleanUpTimeout.current);
++      }
++    };
++  }, [clearMoveLock]);
++
+   return (
+     <GameContext.Provider
+       value={{
+         score: gameState.score,
+         status: gameState.status,
++        isDemoMode,
++        demoInterval,
+         getTiles,
+         moveTiles,
+         startGame,
++        startDemo,
++        stopDemo,
+       }}
+     >
+       {children}
+diff --git a/styles/board.module.css b/styles/board.module.css
+index f2088b2..fd74733 100644
+--- a/styles/board.module.css
++++ b/styles/board.module.css
+@@ -3,6 +3,25 @@
+   width: calc(var(--pixel-size) * 8 * 4 + var(--pixel-size) * 5);
+ }
+ 
++.controls {
++  position: absolute;
++  top: calc(var(--pixel-size) * 1);
++  right: calc(var(--pixel-size) * 1);
++  z-index: 4;
++}
++
++.demoButton {
++  background: var(--button-background);
++  border: calc(var(--pixel-size) * 0.125) solid var(--primary-background);
++  border-radius: calc(var(--pixel-size) * 0.5);
++  color: white;
++  cursor: pointer;
++  font-size: calc(var(--pixel-size) * 1.5);
++  font-weight: bold;
++  line-height: calc(var(--pixel-size) * 2.5);
++  padding: calc(var(--pixel-size) * 0.5) calc(var(--pixel-size) * 1.25);
++}
++
+ .grid {
+   display: flex;
+   flex-wrap: wrap;
+@@ -34,6 +53,17 @@
+     width: calc(var(--pixel-size) * 12.5 * 4 + var(--pixel-size) * 10);
+   }
+ 
++  .controls {
++    top: calc(var(--pixel-size) * 1.5);
++    right: calc(var(--pixel-size) * 1.5);
++  }
++
++  .demoButton {
++    font-size: calc(var(--pixel-size) * 1.875);
++    line-height: calc(var(--pixel-size) * 3);
++    padding: calc(var(--pixel-size) * 0.75) calc(var(--pixel-size) * 1.75);
++  }
++
+   .grid {
+     border: calc(var(--pixel-size) * 1) solid var(--secondary-background);
+   }
+diff --git a/styles/splash.module.css b/styles/splash.module.css
+index 36d17c5..2160b70 100644
+--- a/styles/splash.module.css
++++ b/styles/splash.module.css
+@@ -14,22 +14,39 @@
+ }
+ 
+ .win {
+-  background: rgba(237, 194, 46, 0.6);
++  background: rgba(237, 194, 46, 0.8);
+   color: white;
+ }
+ 
+-.splash > div {
+-  margin: 0 auto;
++.lost {
++  background: rgba(120, 99, 88, 0.82);
++  color: white;
++}
++
++.demo {
++  background: rgba(143, 122, 102, 0.72);
+ }
+ 
+-.splash > div > button {
+-  margin: calc(var(--pixel-size) * 3) auto;
++.splash > div {
++  margin: 0 auto;
+ }
+ 
+ .splash > div > h1 {
+   color: rgba(240, 240, 240, 1);
+ }
+ 
++.actions {
++  display: flex;
++  justify-content: center;
++  gap: calc(var(--pixel-size) * 1);
++  margin-top: calc(var(--pixel-size) * 3);
++}
++
++.hint {
++  color: rgba(240, 240, 240, 0.92);
++  font-weight: bold;
++}
++
+ .button {
+   background: var(--button-background);
+   border: calc(var(--pixel-size) * 0.125) solid var(--primary-background);
+@@ -41,3 +58,10 @@
+   color: white;
+   cursor: pointer;
+ }
++
++@media (max-width: 511px) {
++  .actions {
++    flex-direction: column;
++    align-items: center;
++  }
++}

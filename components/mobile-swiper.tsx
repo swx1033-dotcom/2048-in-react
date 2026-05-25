@@ -10,27 +10,35 @@ export type SwipeInput = { deltaX: number; deltaY: number };
 
 type MobileSwiperProps = PropsWithChildren<{
   onSwipe: (_: SwipeInput) => void;
+  disabled?: boolean;
 }>;
 
-export default function MobileSwiper({ children, onSwipe }: MobileSwiperProps) {
+export default function MobileSwiper({
+  children,
+  disabled = false,
+  onSwipe,
+}: MobileSwiperProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [startX, setStartX] = useState(0);
   const [startY, setStartY] = useState(0);
 
-  const handleTouchStart = useCallback((e: TouchEvent) => {
-    if (!wrapperRef.current?.contains(e.target as Node)) {
-      return;
-    }
+  const handleTouchStart = useCallback(
+    (e: TouchEvent) => {
+      if (disabled || !wrapperRef.current?.contains(e.target as Node)) {
+        return;
+      }
 
-    e.preventDefault();
+      e.preventDefault();
 
-    setStartX(e.touches[0].clientX);
-    setStartY(e.touches[0].clientY);
-  }, []);
+      setStartX(e.touches[0].clientX);
+      setStartY(e.touches[0].clientY);
+    },
+    [disabled],
+  );
 
   const handleTouchEnd = useCallback(
     (e: TouchEvent) => {
-      if (!wrapperRef.current?.contains(e.target as Node)) {
+      if (disabled || !wrapperRef.current?.contains(e.target as Node)) {
         return;
       }
 
@@ -46,7 +54,7 @@ export default function MobileSwiper({ children, onSwipe }: MobileSwiperProps) {
       setStartX(0);
       setStartY(0);
     },
-    [startX, startY, onSwipe],
+    [disabled, onSwipe, startX, startY],
   );
 
   useEffect(() => {
@@ -57,7 +65,7 @@ export default function MobileSwiper({ children, onSwipe }: MobileSwiperProps) {
       window.removeEventListener("touchstart", handleTouchStart);
       window.removeEventListener("touchend", handleTouchEnd);
     };
-  }, [handleTouchStart, handleTouchEnd]);
+  }, [handleTouchEnd, handleTouchStart]);
 
   return <div ref={wrapperRef}>{children}</div>;
 }

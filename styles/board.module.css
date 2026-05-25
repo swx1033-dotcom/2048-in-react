@@ -3,6 +3,25 @@
   width: calc(var(--pixel-size) * 8 * 4 + var(--pixel-size) * 5);
 }
 
+.controls {
+  position: absolute;
+  top: calc(var(--pixel-size) * 1);
+  right: calc(var(--pixel-size) * 1);
+  z-index: 4;
+}
+
+.demoButton {
+  background: var(--button-background);
+  border: calc(var(--pixel-size) * 0.125) solid var(--primary-background);
+  border-radius: calc(var(--pixel-size) * 0.5);
+  color: white;
+  cursor: pointer;
+  font-size: calc(var(--pixel-size) * 1.5);
+  font-weight: bold;
+  line-height: calc(var(--pixel-size) * 2.5);
+  padding: calc(var(--pixel-size) * 0.5) calc(var(--pixel-size) * 1.25);
+}
+
 .grid {
   display: flex;
   flex-wrap: wrap;
@@ -32,6 +51,17 @@
 @media (min-width: 512px) {
   .board {
     width: calc(var(--pixel-size) * 12.5 * 4 + var(--pixel-size) * 10);
+  }
+
+  .controls {
+    top: calc(var(--pixel-size) * 1.5);
+    right: calc(var(--pixel-size) * 1.5);
+  }
+
+  .demoButton {
+    font-size: calc(var(--pixel-size) * 1.875);
+    line-height: calc(var(--pixel-size) * 3);
+    padding: calc(var(--pixel-size) * 0.75) calc(var(--pixel-size) * 1.75);
   }
 
   .grid {

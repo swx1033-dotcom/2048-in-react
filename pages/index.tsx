@@ -2,7 +2,10 @@ import Head from "next/head";
 import Image from "next/image";
 import Board from "@/components/board";
 import Score from "@/components/score";
+import CompetitionStats from "@/components/competition-stats";
+import CountdownTimer from "@/components/countdown-timer";
 import styles from "@/styles/index.module.css";
+import scoreStyles from "@/styles/score.module.css";
 
 export default function Home() {
   return (
@@ -25,7 +28,11 @@ export default function Home() {
       </Head>
       <header>
         <h1>2048</h1>
-        <Score />
+        <CountdownTimer />
+        <div className={scoreStyles.scoreContainer}>
+          <CompetitionStats />
+          <Score />
+        </div>
       </header>
       <main>
         <Board />

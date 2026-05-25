@@ -3,24 +3,29 @@ import { uid } from "uid";
 import { tileCountPerDimension } from "@/constants";
 import { Tile, TileMap } from "@/models/tile";
 
-type GameStatus = "ongoing" | "won" | "lost";
+type GameStatus = "idle" | "ongoing" | "won" | "lost";
 
-type State = {
+export type State = {
   board: string[][];
   tiles: TileMap;
   tilesByIds: string[];
   hasChanged: boolean;
   score: number;
   status: GameStatus;
+  mode: "normal" | "competition";
+  timeoutCount: number;
+  totalThinkTime: number;
+  moveCount: number;
 };
-type Action =
+export type Action =
   | { type: "create_tile"; tile: Tile }
   | { type: "clean_up" }
-  | { type: "move_up" }
-  | { type: "move_down" }
-  | { type: "move_left" }
-  | { type: "move_right" }
-  | { type: "reset_game" }
+  | { type: "move_up"; thinkTime?: number }
+  | { type: "move_down"; thinkTime?: number }
+  | { type: "move_left"; thinkTime?: number }
+  | { type: "move_right"; thinkTime?: number }
+  | { type: "random_move" }
+  | { type: "reset_game"; mode?: "normal" | "competition" }
   | { type: "update_status"; status: GameStatus };
 
 function createBoard() {
@@ -39,7 +44,11 @@ export const initialState: State = {
   tilesByIds: [],
   hasChanged: false,
   score: 0,
-  status: "ongoing",
+  status: "idle",
+  mode: "normal",
+  timeoutCount: 0,
+  totalThinkTime: 0,
+  moveCount: 0,
 };
 
 export default function gameReducer(
@@ -50,7 +59,7 @@ export default function gameReducer(
     case "clean_up": {
       const flattenBoard = flattenDeep(state.board);
       const newTiles: TileMap = flattenBoard.reduce(
-        (result, tileId: string) => {
+        (result: TileMap, tileId: string) => {
           if (isNil(tileId)) {
             return result;
           }
@@ -138,6 +147,8 @@ export default function gameReducer(
         tiles: newTiles,
         hasChanged,
         score,
+        totalThinkTime: state.totalThinkTime + (hasChanged ? (action.thinkTime || 0) : 0),
+        moveCount: state.moveCount + (hasChanged ? 1 : 0),
       };
     }
     case "move_down": {
@@ -189,6 +200,8 @@ export default function gameReducer(
         tiles: newTiles,
         hasChanged,
         score,
+        totalThinkTime: state.totalThinkTime + (hasChanged ? (action.thinkTime || 0) : 0),
+        moveCount: state.moveCount + (hasChanged ? 1 : 0),
       };
     }
     case "move_left": {
@@ -240,6 +253,8 @@ export default function gameReducer(
         tiles: newTiles,
         hasChanged,
         score,
+        totalThinkTime: state.totalThinkTime + (hasChanged ? (action.thinkTime || 0) : 0),
+        moveCount: state.moveCount + (hasChanged ? 1 : 0),
       };
     }
     case "move_right": {
@@ -291,15 +306,36 @@ export default function gameReducer(
         tiles: newTiles,
         hasChanged,
         score,
+        totalThinkTime: state.totalThinkTime + (hasChanged ? (action.thinkTime || 0) : 0),
+        moveCount: state.moveCount + (hasChanged ? 1 : 0),
       };
     }
     case "reset_game":
-      return initialState;
+      return {
+        ...initialState,
+        mode: action.mode || state.mode,
+        status: "ongoing" as GameStatus,
+      };
     case "update_status":
       return {
         ...state,
         status: action.status,
       };
+    case "random_move": {
+      const directions: Action["type"][] = ["move_up", "move_down", "move_left", "move_right"];
+      const shuffled = directions.sort(() => Math.random() - 0.5);
+      for (const dir of shuffled) {
+        // We know it's a move action
+        const newState: State = gameReducer(state, { type: dir } as Action);
+        if (newState.hasChanged) {
+          return {
+            ...newState,
+            timeoutCount: state.timeoutCount + 1,
+          };
+        }
+      }
+      return state;
+    }
     default:
       return state;
   }

@@ -1,9 +1,12 @@
+"use client";
+
 import {
   PropsWithChildren,
   createContext,
   useCallback,
   useEffect,
   useReducer,
+  useRef,
 } from "react";
 import { isNil, throttle } from "lodash";
 import {
@@ -12,20 +15,39 @@ import {
   tileCountPerDimension,
 } from "@/constants";
 import { Tile } from "@/models/tile";
-import gameReducer, { initialState } from "@/reducers/game-reducer";
+import gameReducer, { initialState, State } from "@/reducers/game-reducer";
 
 type MoveDirection = "move_up" | "move_down" | "move_left" | "move_right";
 
-export const GameContext = createContext({
+export type GameContextType = {
+  score: number;
+  status: State["status"];
+  mode: State["mode"];
+  timeoutCount: number;
+  totalThinkTime: number;
+  moveCount: number;
+  moveTiles: (type: MoveDirection) => void;
+  getTiles: () => Tile[];
+  startGame: (mode?: "normal" | "competition") => void;
+  makeRandomMove: () => void;
+};
+
+export const GameContext = createContext<GameContextType>({
   score: 0,
-  status: "ongoing",
-  moveTiles: (_: MoveDirection) => {},
-  getTiles: () => [] as Tile[],
+  status: "idle",
+  mode: "normal",
+  timeoutCount: 0,
+  totalThinkTime: 0,
+  moveCount: 0,
+  moveTiles: () => {},
+  getTiles: () => [],
   startGame: () => {},
+  makeRandomMove: () => {},
 });
 
 export default function GameProvider({ children }: PropsWithChildren) {
   const [gameState, dispatch] = useReducer(gameReducer, initialState);
+  const lastMoveTime = useRef<number>(Date.now());
 
   const getEmptyCells = () => {
     const results: [number, number][] = [];
@@ -53,27 +75,38 @@ export default function GameProvider({ children }: PropsWithChildren) {
   };
 
   const getTiles = () => {
-    return gameState.tilesByIds.map((tileId) => gameState.tiles[tileId]);
+    return gameState.tilesByIds.map((tileId: string) => gameState.tiles[tileId]);
   };
 
   const moveTiles = useCallback(
     throttle(
-      (type: MoveDirection) => dispatch({ type }),
+      (type: MoveDirection) => {
+        const now = Date.now();
+        const thinkTime = now - lastMoveTime.current;
+        lastMoveTime.current = now;
+        dispatch({ type, thinkTime });
+      },
       mergeAnimationDuration * 1.05,
       { trailing: false },
     ),
     [dispatch],
   );
 
-  const startGame = () => {
-    dispatch({ type: "reset_game" });
+  const makeRandomMove = useCallback(() => {
+    dispatch({ type: "random_move" });
+    lastMoveTime.current = Date.now();
+  }, [dispatch]);
+
+  const startGame = (mode: "normal" | "competition" = "normal") => {
+    dispatch({ type: "reset_game", mode });
     dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
     dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
+    lastMoveTime.current = Date.now();
   };
 
   const checkGameState = () => {
     const isWon =
-      Object.values(gameState.tiles).filter((t) => t.value === gameWinTileValue)
+      Object.values(gameState.tiles).filter((t) => (t as Tile).value === gameWinTileValue)
         .length > 0;
 
     if (isWon) {
@@ -127,9 +160,14 @@ export default function GameProvider({ children }: PropsWithChildren) {
       value={{
         score: gameState.score,
         status: gameState.status,
+        mode: gameState.mode,
+        timeoutCount: gameState.timeoutCount,
+        totalThinkTime: gameState.totalThinkTime,
+        moveCount: gameState.moveCount,
         getTiles,
         moveTiles,
         startGame,
+        makeRandomMove,
       }}
     >
       {children}

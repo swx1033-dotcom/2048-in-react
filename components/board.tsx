@@ -7,13 +7,22 @@ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
 import Splash from "./splash";
 
 export default function Board() {
-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
+  const { getTiles, moveTiles, startGame, status, isDemoing, stopDemo } = useContext(GameContext);
   const initialized = useRef(false);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
+      if (e.code === "Escape" && isDemoing) {
+        stopDemo();
+        return;
+      }
+
+      if (isDemoing) return; // Disable input during demo
+
       // disables page scrolling with keyboard arrows
-      e.preventDefault();
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
+        e.preventDefault();
+      }
 
       switch (e.code) {
         case "ArrowUp":
@@ -30,11 +39,13 @@ export default function Board() {
           break;
       }
     },
-    [moveTiles],
+    [moveTiles, isDemoing, stopDemo],
   );
 
   const handleSwipe = useCallback(
     ({ deltaX, deltaY }: SwipeInput) => {
+      if (isDemoing) return; // Disable input during demo
+
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
         if (deltaX > 0) {
           moveTiles("move_right");
@@ -49,7 +60,7 @@ export default function Board() {
         }
       }
     },
-    [moveTiles],
+    [moveTiles, isDemoing],
   );
 
   const renderGrid = () => {
@@ -89,6 +100,7 @@ export default function Board() {
       <div className={styles.board}>
         {status === "won" && <Splash heading="You won!" type="won" />}
         {status === "lost" && <Splash heading="You lost!" />}
+        {status === "ongoing" && isDemoing && <Splash heading="演示中…" type="demo" />}
         <div className={styles.tiles}>{renderTiles()}</div>
         <div className={styles.grid}>{renderGrid()}</div>
       </div>

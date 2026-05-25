@@ -4,6 +4,8 @@ import {
   useCallback,
   useEffect,
   useReducer,
+  useState,
+  useRef,
 } from "react";
 import { isNil, throttle } from "lodash";
 import {
@@ -22,10 +24,32 @@ export const GameContext = createContext({
   moveTiles: (_: MoveDirection) => {},
   getTiles: () => [] as Tile[],
   startGame: () => {},
+  isDemoing: false,
+  startDemo: () => {},
+  stopDemo: () => {},
 });
 
 export default function GameProvider({ children }: PropsWithChildren) {
   const [gameState, dispatch] = useReducer(gameReducer, initialState);
+  const [isDemoing, setIsDemoing] = useState(false);
+  const hasChangedRef = useRef(gameState.hasChanged);
+
+  useEffect(() => {
+    hasChangedRef.current = gameState.hasChanged;
+  }, [gameState.hasChanged]);
+
+  const startDemo = useCallback(() => {
+    if (gameState.status !== "ongoing") {
+      dispatch({ type: "reset_game" });
+      dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
+      dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
+    }
+    setIsDemoing(true);
+  }, [gameState.status]);
+
+  const stopDemo = useCallback(() => {
+    setIsDemoing(false);
+  }, []);
 
   const getEmptyCells = () => {
     const results: [number, number][] = [];
@@ -53,7 +77,7 @@ export default function GameProvider({ children }: PropsWithChildren) {
   };
 
   const getTiles = () => {
-    return gameState.tilesByIds.map((tileId) => gameState.tiles[tileId]);
+    return gameState.tilesByIds.map((tileId: string) => gameState.tiles[tileId]);
   };
 
   const moveTiles = useCallback(
@@ -73,7 +97,7 @@ export default function GameProvider({ children }: PropsWithChildren) {
 
   const checkGameState = () => {
     const isWon =
-      Object.values(gameState.tiles).filter((t) => t.value === gameWinTileValue)
+      (Object.values(gameState.tiles) as Tile[]).filter((t: Tile) => t.value === gameWinTileValue)
         .length > 0;
 
     if (isWon) {
@@ -122,6 +146,29 @@ export default function GameProvider({ children }: PropsWithChildren) {
     }
   }, [gameState.hasChanged]);
 
+  useEffect(() => {
+    if (!isDemoing) return;
+
+    if (gameState.status !== "ongoing") {
+      stopDemo();
+      return;
+    }
+
+    const timer = setInterval(() => {
+      if (hasChangedRef.current) return;
+      const moves: MoveDirection[] = [
+        "move_up",
+        "move_down",
+        "move_left",
+        "move_right",
+      ];
+      const randomMove = moves[Math.floor(Math.random() * moves.length)];
+      moveTiles(randomMove);
+    }, 500);
+
+    return () => clearInterval(timer);
+  }, [isDemoing, gameState.status, moveTiles, stopDemo]);
+
   return (
     <GameContext.Provider
       value={{
@@ -130,6 +177,9 @@ export default function GameProvider({ children }: PropsWithChildren) {
         getTiles,
         moveTiles,
         startGame,
+        isDemoing,
+        startDemo,
+        stopDemo,
       }}
     >
       {children}

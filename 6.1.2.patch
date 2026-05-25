@@ -1,0 +1,198 @@
+diff --git a/components/board.tsx b/components/board.tsx
+index 57e2531..92d840e 100644
+--- a/components/board.tsx
++++ b/components/board.tsx
+@@ -7,13 +7,22 @@ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
+ import Splash from "./splash";
+ 
+ export default function Board() {
+-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
++  const { getTiles, moveTiles, startGame, status, isDemoing, stopDemo } = useContext(GameContext);
+   const initialized = useRef(false);
+ 
+   const handleKeyDown = useCallback(
+     (e: KeyboardEvent) => {
++      if (e.code === "Escape" && isDemoing) {
++        stopDemo();
++        return;
++      }
++
++      if (isDemoing) return; // Disable input during demo
++
+       // disables page scrolling with keyboard arrows
+-      e.preventDefault();
++      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
++        e.preventDefault();
++      }
+ 
+       switch (e.code) {
+         case "ArrowUp":
+@@ -30,11 +39,13 @@ export default function Board() {
+           break;
+       }
+     },
+-    [moveTiles],
++    [moveTiles, isDemoing, stopDemo],
+   );
+ 
+   const handleSwipe = useCallback(
+     ({ deltaX, deltaY }: SwipeInput) => {
++      if (isDemoing) return; // Disable input during demo
++
+       if (Math.abs(deltaX) > Math.abs(deltaY)) {
+         if (deltaX > 0) {
+           moveTiles("move_right");
+@@ -49,7 +60,7 @@ export default function Board() {
+         }
+       }
+     },
+-    [moveTiles],
++    [moveTiles, isDemoing],
+   );
+ 
+   const renderGrid = () => {
+@@ -89,6 +100,7 @@ export default function Board() {
+       <div className={styles.board}>
+         {status === "won" && <Splash heading="You won!" type="won" />}
+         {status === "lost" && <Splash heading="You lost!" />}
++        {status === "ongoing" && isDemoing && <Splash heading="演示中…" type="demo" />}
+         <div className={styles.tiles}>{renderTiles()}</div>
+         <div className={styles.grid}>{renderGrid()}</div>
+       </div>
+diff --git a/components/splash.tsx b/components/splash.tsx
+index de37256..a525dbe 100644
+--- a/components/splash.tsx
++++ b/components/splash.tsx
+@@ -3,14 +3,23 @@ import styles from "@/styles/splash.module.css";
+ import { useContext } from "react";
+ 
+ export default function Splash({ heading = "You won!", type = "" }) {
+-  const { startGame } = useContext(GameContext);
++  const { startGame, startDemo, stopDemo, isDemoing } = useContext(GameContext);
+ 
+   return (
+-    <div className={`${styles.splash} ${type === "won" && styles.win}`}>
++    <div className={`${styles.splash} ${type === "won" ? styles.win : ""}`}>
+       <div>
+-        <h1>{heading}</h1>
+-        <button className={styles.button} onClick={startGame}>
+-          Play again
++        <h1>{isDemoing ? "演示中…" : heading}</h1>
++        {!isDemoing && (
++          <button className={styles.button} onClick={startGame}>
++            Play again
++          </button>
++        )}
++        <button
++          className={styles.button}
++          onClick={isDemoing ? stopDemo : startDemo}
++          style={!isDemoing ? { marginLeft: "10px" } : {}}
++        >
++          {isDemoing ? "⏹ 停止演示" : "▶ 自动演示"}
+         </button>
+       </div>
+     </div>
+diff --git a/context/game-context.tsx b/context/game-context.tsx
+index 0b93edc..d904cc5 100644
+--- a/context/game-context.tsx
++++ b/context/game-context.tsx
+@@ -4,6 +4,8 @@ import {
+   useCallback,
+   useEffect,
+   useReducer,
++  useState,
++  useRef,
+ } from "react";
+ import { isNil, throttle } from "lodash";
+ import {
+@@ -22,10 +24,32 @@ export const GameContext = createContext({
+   moveTiles: (_: MoveDirection) => {},
+   getTiles: () => [] as Tile[],
+   startGame: () => {},
++  isDemoing: false,
++  startDemo: () => {},
++  stopDemo: () => {},
+ });
+ 
+ export default function GameProvider({ children }: PropsWithChildren) {
+   const [gameState, dispatch] = useReducer(gameReducer, initialState);
++  const [isDemoing, setIsDemoing] = useState(false);
++  const hasChangedRef = useRef(gameState.hasChanged);
++
++  useEffect(() => {
++    hasChangedRef.current = gameState.hasChanged;
++  }, [gameState.hasChanged]);
++
++  const startDemo = useCallback(() => {
++    if (gameState.status !== "ongoing") {
++      dispatch({ type: "reset_game" });
++      dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
++      dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
++    }
++    setIsDemoing(true);
++  }, [gameState.status]);
++
++  const stopDemo = useCallback(() => {
++    setIsDemoing(false);
++  }, []);
+ 
+   const getEmptyCells = () => {
+     const results: [number, number][] = [];
+@@ -53,7 +77,7 @@ export default function GameProvider({ children }: PropsWithChildren) {
+   };
+ 
+   const getTiles = () => {
+-    return gameState.tilesByIds.map((tileId) => gameState.tiles[tileId]);
++    return gameState.tilesByIds.map((tileId: string) => gameState.tiles[tileId]);
+   };
+ 
+   const moveTiles = useCallback(
+@@ -73,7 +97,7 @@ export default function GameProvider({ children }: PropsWithChildren) {
+ 
+   const checkGameState = () => {
+     const isWon =
+-      Object.values(gameState.tiles).filter((t) => t.value === gameWinTileValue)
++      (Object.values(gameState.tiles) as Tile[]).filter((t: Tile) => t.value === gameWinTileValue)
+         .length > 0;
+ 
+     if (isWon) {
+@@ -122,6 +146,29 @@ export default function GameProvider({ children }: PropsWithChildren) {
+     }
+   }, [gameState.hasChanged]);
+ 
++  useEffect(() => {
++    if (!isDemoing) return;
++
++    if (gameState.status !== "ongoing") {
++      stopDemo();
++      return;
++    }
++
++    const timer = setInterval(() => {
++      if (hasChangedRef.current) return;
++      const moves: MoveDirection[] = [
++        "move_up",
++        "move_down",
++        "move_left",
++        "move_right",
++      ];
++      const randomMove = moves[Math.floor(Math.random() * moves.length)];
++      moveTiles(randomMove);
++    }, 500);
++
++    return () => clearInterval(timer);
++  }, [isDemoing, gameState.status, moveTiles, stopDemo]);
++
+   return (
+     <GameContext.Provider
+       value={{
+@@ -130,6 +177,9 @@ export default function GameProvider({ children }: PropsWithChildren) {
+         getTiles,
+         moveTiles,
+         startGame,
++        isDemoing,
++        startDemo,
++        stopDemo,
+       }}
+     >
+       {children}

@@ -29,6 +29,13 @@
   bottom: 0;
 }
 
+.timer {
+  position: absolute;
+  top: calc(var(--pixel-size) * 1);
+  right: calc(var(--pixel-size) * 1);
+  z-index: 4;
+}
+
 @media (min-width: 512px) {
   .board {
     width: calc(var(--pixel-size) * 12.5 * 4 + var(--pixel-size) * 10);
@@ -46,5 +53,10 @@
 
   .tiles {
     margin: calc(var(--pixel-size) * 1);
+  }
+
+  .timer {
+    top: calc(var(--pixel-size) * 2);
+    right: calc(var(--pixel-size) * 2);
   }
 }

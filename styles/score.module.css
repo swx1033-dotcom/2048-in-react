@@ -1,3 +1,9 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--pixel-size) * 0.5);
+}
+
 .score {
   background: var(--secondary-background);
   border: calc(var(--pixel-size) * 0.5) solid var(--secondary-background);
@@ -15,6 +21,29 @@
   color: var(--secondary-text-color);
 }
 
+.tournamentStats {
+  display: flex;
+  gap: calc(var(--pixel-size) * 0.5);
+}
+
+.stat {
+  flex: 1;
+  background: var(--secondary-background);
+  border: calc(var(--pixel-size) * 0.5) solid var(--secondary-background);
+  border-radius: calc(var(--pixel-size) * 0.75);
+  color: var(--tile-background);
+  font-size: calc(var(--pixel-size) * 1);
+  line-height: calc(var(--pixel-size) * 2);
+  font-weight: bold;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.stat > div {
+  font-size: calc(var(--pixel-size) * 1.5);
+  color: var(--secondary-text-color);
+}
+
 @media (min-width: 512px) {
   .score {
     border: calc(var(--pixel-size) * 1) solid var(--secondary-background);
@@ -24,5 +53,15 @@
 
   .score > div {
     font-size: calc(var(--pixel-size) * 3.5);
+  }
+
+  .stat {
+    border: calc(var(--pixel-size) * 1) solid var(--secondary-background);
+    font-size: calc(var(--pixel-size) * 1.25);
+    line-height: calc(var(--pixel-size) * 2.5);
+  }
+
+  .stat > div {
+    font-size: calc(var(--pixel-size) * 2);
   }
 }

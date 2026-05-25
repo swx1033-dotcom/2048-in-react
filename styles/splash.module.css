@@ -41,3 +41,33 @@
   color: white;
   cursor: pointer;
 }
+
+.modeSelector {
+  display: flex;
+  gap: calc(var(--pixel-size) * 1);
+  margin: calc(var(--pixel-size) * 2) auto;
+  justify-content: center;
+}
+
+.modeButton {
+  background: rgba(238, 228, 218, 0.7);
+  border: calc(var(--pixel-size) * 0.125) solid #8f7a66;
+  border-radius: calc(var(--pixel-size) * 0.5);
+  font-size: calc(var(--pixel-size) * 1.5);
+  line-height: calc(var(--pixel-size) * 3);
+  padding: calc(var(--pixel-size) * 0.5) calc(var(--pixel-size) * 1.5);
+  font-weight: bold;
+  color: #776e65;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.modeButton:hover {
+  background: rgba(238, 228, 218, 0.9);
+}
+
+.modeButton.active {
+  background: #f65e3b;
+  color: white;
+  border-color: #f65e3b;
+}

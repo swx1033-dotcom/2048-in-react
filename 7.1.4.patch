@@ -1,0 +1,882 @@
+diff --git a/components/board.tsx b/components/board.tsx
+index 57e2531..a0ba6ab 100644
+--- a/components/board.tsx
++++ b/components/board.tsx
+@@ -1,14 +1,24 @@
+-import { useCallback, useContext, useEffect, useRef } from "react";
++import { useCallback, useContext, useEffect, useRef, useState } from "react";
+ import { Tile as TileModel } from "@/models/tile";
+ import styles from "@/styles/board.module.css";
+ import Tile from "./tile";
+ import { GameContext } from "@/context/game-context";
+ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
+ import Splash from "./splash";
++import CircularProgress from "./circular-progress";
++import { tournamentModeTimeLimit } from "@/constants";
+ 
+ export default function Board() {
+-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
++  const { 
++    getTiles, 
++    moveTiles, 
++    startGame, 
++    status,
++    isTournamentMode,
++    timeLeft,
++  } = useContext(GameContext);
+   const initialized = useRef(false);
++  const [gameStarted, setGameStarted] = useState(false);
+ 
+   const handleKeyDown = useCallback(
+     (e: KeyboardEvent) => {
+@@ -69,12 +79,16 @@ export default function Board() {
+     ));
+   };
+ 
++  const handleStartGame = useCallback(() => {
++    setGameStarted(true);
++    startGame();
++  }, [startGame]);
++
+   useEffect(() => {
+     if (initialized.current === false) {
+-      startGame();
+       initialized.current = true;
+     }
+-  }, [startGame]);
++  }, []);
+ 
+   useEffect(() => {
+     window.addEventListener("keydown", handleKeyDown);
+@@ -84,13 +98,21 @@ export default function Board() {
+     };
+   }, [handleKeyDown]);
+ 
++  const progress = ((tournamentModeTimeLimit - timeLeft) / tournamentModeTimeLimit) * 100;
++
+   return (
+     <MobileSwiper onSwipe={handleSwipe}>
+       <div className={styles.board}>
+-        {status === "won" && <Splash heading="You won!" type="won" />}
+-        {status === "lost" && <Splash heading="You lost!" />}
++        {!gameStarted && <Splash heading="2048" showModeSelector={true} onPlay={handleStartGame} />}
++        {gameStarted && status === "won" && <Splash heading="You won!" type="won" showModeSelector={false} />}
++        {gameStarted && status === "lost" && <Splash heading="You lost!" showModeSelector={false} />}
+         <div className={styles.tiles}>{renderTiles()}</div>
+         <div className={styles.grid}>{renderGrid()}</div>
++        {gameStarted && isTournamentMode && status === "ongoing" && (
++          <div className={styles.timer}>
++            <CircularProgress progress={progress} timeLeft={timeLeft} />
++          </div>
++        )}
+       </div>
+     </MobileSwiper>
+   );
+diff --git a/components/score.tsx b/components/score.tsx
+index 5fd1532..a6898af 100644
+--- a/components/score.tsx
++++ b/components/score.tsx
+@@ -3,12 +3,26 @@ import styles from "@/styles/score.module.css";
+ import { useContext } from "react";
+ 
+ export default function Score() {
+-  const { score } = useContext(GameContext);
++  const { score, isTournamentMode, timeoutCount, averageThinkingTime } = useContext(GameContext);
+ 
+   return (
+-    <div className={styles.score}>
+-      Score
+-      <div>{score}</div>
++    <div className={styles.container}>
++      <div className={styles.score}>
++        Score
++        <div>{score}</div>
++      </div>
++      {isTournamentMode && (
++        <div className={styles.tournamentStats}>
++          <div className={styles.stat}>
++            Timeouts
++            <div>{timeoutCount}</div>
++          </div>
++          <div className={styles.stat}>
++            Avg Time
++            <div>{averageThinkingTime.toFixed(1)}s</div>
++          </div>
++        </div>
++      )}
+     </div>
+   );
+ }
+diff --git a/components/splash.tsx b/components/splash.tsx
+index de37256..910fc09 100644
+--- a/components/splash.tsx
++++ b/components/splash.tsx
+@@ -2,15 +2,46 @@ import { GameContext } from "@/context/game-context";
+ import styles from "@/styles/splash.module.css";
+ import { useContext } from "react";
+ 
+-export default function Splash({ heading = "You won!", type = "" }) {
+-  const { startGame } = useContext(GameContext);
++interface SplashProps {
++  heading?: string;
++  type?: string;
++  showModeSelector?: boolean;
++  onPlay?: () => void;
++}
++
++export default function Splash({ heading = "You won!", type = "", showModeSelector = true, onPlay }: SplashProps) {
++  const { startGame, isTournamentMode, setTournamentMode } = useContext(GameContext);
++
++  const handlePlay = () => {
++    if (onPlay) {
++      onPlay();
++    } else {
++      startGame();
++    }
++  };
+ 
+   return (
+     <div className={`${styles.splash} ${type === "won" && styles.win}`}>
+       <div>
+         <h1>{heading}</h1>
+-        <button className={styles.button} onClick={startGame}>
+-          Play again
++        {showModeSelector && (
++          <div className={styles.modeSelector}>
++            <button
++              className={`${styles.modeButton} ${!isTournamentMode ? styles.active : ""}`}
++              onClick={() => setTournamentMode(false)}
++            >
++              Normal
++            </button>
++            <button
++              className={`${styles.modeButton} ${isTournamentMode ? styles.active : ""}`}
++              onClick={() => setTournamentMode(true)}
++            >
++              Tournament
++            </button>
++          </div>
++        )}
++        <button className={styles.button} onClick={handlePlay}>
++          {onPlay ? "Play" : "Play again"}
+         </button>
+       </div>
+     </div>
+diff --git a/constants.ts b/constants.ts
+index 053a40f..6677b43 100644
+--- a/constants.ts
++++ b/constants.ts
+@@ -18,3 +18,8 @@ export const moveAnimationDuration = 200; // ms
+  * Game setup
+  */
+ export const gameWinTileValue = 2048;
++
++/**
++ * Tournament mode
++ */
++export const tournamentModeTimeLimit = 5; // seconds
+diff --git a/context/game-context.tsx b/context/game-context.tsx
+index 0b93edc..4ba98fe 100644
+--- a/context/game-context.tsx
++++ b/context/game-context.tsx
+@@ -4,12 +4,14 @@ import {
+   useCallback,
+   useEffect,
+   useReducer,
++  useRef,
+ } from "react";
+ import { isNil, throttle } from "lodash";
+ import {
+   gameWinTileValue,
+   mergeAnimationDuration,
+   tileCountPerDimension,
++  tournamentModeTimeLimit,
+ } from "@/constants";
+ import { Tile } from "@/models/tile";
+ import gameReducer, { initialState } from "@/reducers/game-reducer";
+@@ -22,10 +24,22 @@ export const GameContext = createContext({
+   moveTiles: (_: MoveDirection) => {},
+   getTiles: () => [] as Tile[],
+   startGame: () => {},
++  isTournamentMode: false,
++  setTournamentMode: (_: boolean) => {},
++  timeLeft: tournamentModeTimeLimit,
++  timeoutCount: 0,
++  moveCount: 0,
++  totalThinkingTime: 0,
++  averageThinkingTime: 0,
+ });
+ 
+ export default function GameProvider({ children }: PropsWithChildren) {
+   const [gameState, dispatch] = useReducer(gameReducer, initialState);
++  const animationFrameRef = useRef<number>();
++  const lastTimeRef = useRef<number>();
++  const turnStartTimeRef = useRef<number>();
++  const timeLeftRef = useRef(tournamentModeTimeLimit);
++  const isMovingRef = useRef(false);
+ 
+   const getEmptyCells = () => {
+     const results: [number, number][] = [];
+@@ -56,21 +70,79 @@ export default function GameProvider({ children }: PropsWithChildren) {
+     return gameState.tilesByIds.map((tileId) => gameState.tiles[tileId]);
+   };
+ 
++  const simulateMove = (direction: MoveDirection) => {
++    const testState = gameReducer(gameState, { type: direction });
++    return testState.hasChanged;
++  };
++
++  const getAvailableMoves = () => {
++    const moves: MoveDirection[] = ["move_up", "move_down", "move_left", "move_right"];
++    return moves.filter(move => simulateMove(move));
++  };
++
++  const makeRandomMove = () => {
++    const availableMoves = getAvailableMoves();
++    if (availableMoves.length > 0) {
++      const randomIndex = Math.floor(Math.random() * availableMoves.length);
++      dispatch({ type: availableMoves[randomIndex] });
++      dispatch({ type: "increment_timeout_count" });
++    }
++  };
++
++  const animate = useCallback((timestamp: number) => {
++    if (!lastTimeRef.current) {
++      lastTimeRef.current = timestamp;
++    }
++
++    const deltaTime = (timestamp - lastTimeRef.current) / 1000;
++    lastTimeRef.current = timestamp;
++
++    if (gameState.isTournamentMode && gameState.status === "ongoing" && !isMovingRef.current) {
++      timeLeftRef.current -= deltaTime;
++
++      if (timeLeftRef.current <= 0) {
++        timeLeftRef.current = tournamentModeTimeLimit;
++        turnStartTimeRef.current = timestamp;
++        makeRandomMove();
++      }
++    }
++
++    animationFrameRef.current = requestAnimationFrame(animate);
++  }, [gameState.isTournamentMode, gameState.status]);
++
+   const moveTiles = useCallback(
+     throttle(
+-      (type: MoveDirection) => dispatch({ type }),
++      (type: MoveDirection) => {
++        isMovingRef.current = true;
++        if (gameState.isTournamentMode && turnStartTimeRef.current && lastTimeRef.current) {
++          const thinkingTime = (lastTimeRef.current - turnStartTimeRef.current) / 1000;
++          dispatch({ type: "record_thinking_time", thinkingTime });
++        }
++        dispatch({ type });
++        if (gameState.isTournamentMode) {
++          timeLeftRef.current = tournamentModeTimeLimit;
++        }
++      },
+       mergeAnimationDuration * 1.05,
+       { trailing: false },
+     ),
+-    [dispatch],
++    [dispatch, gameState.isTournamentMode],
+   );
+ 
+   const startGame = () => {
+     dispatch({ type: "reset_game" });
+     dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
+     dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
++    timeLeftRef.current = tournamentModeTimeLimit;
++    turnStartTimeRef.current = performance.now();
++    lastTimeRef.current = performance.now();
++    isMovingRef.current = false;
+   };
+ 
++  const setTournamentMode = useCallback((isTournamentMode: boolean) => {
++    dispatch({ type: "set_tournament_mode", isTournamentMode });
++  }, []);
++
+   const checkGameState = () => {
+     const isWon =
+       Object.values(gameState.tiles).filter((t) => t.value === gameWinTileValue)
+@@ -112,6 +184,8 @@ export default function GameProvider({ children }: PropsWithChildren) {
+       setTimeout(() => {
+         dispatch({ type: "clean_up" });
+         appendRandomTile();
++        isMovingRef.current = false;
++        turnStartTimeRef.current = performance.now();
+       }, mergeAnimationDuration);
+     }
+   }, [gameState.hasChanged]);
+@@ -122,6 +196,32 @@ export default function GameProvider({ children }: PropsWithChildren) {
+     }
+   }, [gameState.hasChanged]);
+ 
++  useEffect(() => {
++    if (gameState.isTournamentMode && gameState.status === "ongoing") {
++      animationFrameRef.current = requestAnimationFrame(animate);
++    } else {
++      if (animationFrameRef.current) {
++        cancelAnimationFrame(animationFrameRef.current);
++      }
++    }
++
++    return () => {
++      if (animationFrameRef.current) {
++        cancelAnimationFrame(animationFrameRef.current);
++      }
++    };
++  }, [gameState.isTournamentMode, gameState.status, animate]);
++
++  useEffect(() => {
++    if (gameState.status !== "ongoing" && animationFrameRef.current) {
++      cancelAnimationFrame(animationFrameRef.current);
++    }
++  }, [gameState.status]);
++
++  const averageThinkingTime = gameState.moveCount > 0
++    ? gameState.totalThinkingTime / gameState.moveCount
++    : 0;
++
+   return (
+     <GameContext.Provider
+       value={{
+@@ -130,6 +230,13 @@ export default function GameProvider({ children }: PropsWithChildren) {
+         getTiles,
+         moveTiles,
+         startGame,
++        isTournamentMode: gameState.isTournamentMode,
++        setTournamentMode,
++        timeLeft: Math.max(0, timeLeftRef.current),
++        timeoutCount: gameState.timeoutCount,
++        moveCount: gameState.moveCount,
++        totalThinkingTime: gameState.totalThinkingTime,
++        averageThinkingTime,
+       }}
+     >
+       {children}
+diff --git a/reducers/game-reducer.ts b/reducers/game-reducer.ts
+index 47d6226..7fc1f7c 100644
+--- a/reducers/game-reducer.ts
++++ b/reducers/game-reducer.ts
+@@ -12,6 +12,10 @@ type State = {
+   hasChanged: boolean;
+   score: number;
+   status: GameStatus;
++  isTournamentMode: boolean;
++  timeoutCount: number;
++  moveCount: number;
++  totalThinkingTime: number;
+ };
+ type Action =
+   | { type: "create_tile"; tile: Tile }
+@@ -21,7 +25,10 @@ type Action =
+   | { type: "move_left" }
+   | { type: "move_right" }
+   | { type: "reset_game" }
+-  | { type: "update_status"; status: GameStatus };
++  | { type: "update_status"; status: GameStatus }
++  | { type: "set_tournament_mode"; isTournamentMode: boolean }
++  | { type: "increment_timeout_count" }
++  | { type: "record_thinking_time"; thinkingTime: number };
+ 
+ function createBoard() {
+   const board: string[][] = [];
+@@ -40,6 +47,10 @@ export const initialState: State = {
+   hasChanged: false,
+   score: 0,
+   status: "ongoing",
++  isTournamentMode: false,
++  timeoutCount: 0,
++  moveCount: 0,
++  totalThinkingTime: 0,
+ };
+ 
+ export default function gameReducer(
+@@ -89,217 +100,204 @@ export default function gameReducer(
+         tilesByIds: [...state.tilesByIds, tileId],
+       };
+     }
+-    case "move_up": {
++    case "move_up":
++    case "move_down":
++    case "move_left":
++    case "move_right": {
++      const direction = action.type;
+       const newBoard = createBoard();
+       const newTiles: TileMap = {};
+       let hasChanged = false;
+       let { score } = state;
+ 
+-      for (let x = 0; x < tileCountPerDimension; x++) {
+-        let newY = 0;
+-        let previousTile: Tile | undefined;
++      if (direction === "move_up") {
++        for (let x = 0; x < tileCountPerDimension; x++) {
++          let newY = 0;
++          let previousTile: Tile | undefined;
+ 
+-        for (let y = 0; y < tileCountPerDimension; y++) {
+-          const tileId = state.board[y][x];
+-          const currentTile = state.tiles[tileId];
++          for (let y = 0; y < tileCountPerDimension; y++) {
++            const tileId = state.board[y][x];
++            const currentTile = state.tiles[tileId];
+ 
+-          if (!isNil(tileId)) {
+-            if (previousTile?.value === currentTile.value) {
+-              score += previousTile.value * 2;
+-              newTiles[previousTile.id as string] = {
+-                ...previousTile,
+-                value: previousTile.value * 2,
+-              };
++            if (!isNil(tileId)) {
++              if (previousTile?.value === currentTile.value) {
++                score += previousTile.value * 2;
++                newTiles[previousTile.id as string] = {
++                  ...previousTile,
++                  value: previousTile.value * 2,
++                };
++                newTiles[tileId] = {
++                  ...currentTile,
++                  position: [x, newY - 1],
++                };
++                previousTile = undefined;
++                hasChanged = true;
++                continue;
++              }
++
++              newBoard[newY][x] = tileId;
+               newTiles[tileId] = {
+                 ...currentTile,
+-                position: [x, newY - 1],
++                position: [x, newY],
+               };
+-              previousTile = undefined;
+-              hasChanged = true;
+-              continue;
++              previousTile = newTiles[tileId];
++              if (!isEqual(currentTile.position, [x, newY])) {
++                hasChanged = true;
++              }
++              newY++;
+             }
+-
+-            newBoard[newY][x] = tileId;
+-            newTiles[tileId] = {
+-              ...currentTile,
+-              position: [x, newY],
+-            };
+-            previousTile = newTiles[tileId];
+-            if (!isEqual(currentTile.position, [x, newY])) {
+-              hasChanged = true;
+-            }
+-            newY++;
+           }
+         }
+-      }
+-      return {
+-        ...state,
+-        board: newBoard,
+-        tiles: newTiles,
+-        hasChanged,
+-        score,
+-      };
+-    }
+-    case "move_down": {
+-      const newBoard = createBoard();
+-      const newTiles: TileMap = {};
+-      let hasChanged = false;
+-      let { score } = state;
++      } else if (direction === "move_down") {
++        for (let x = 0; x < tileCountPerDimension; x++) {
++          let newY = tileCountPerDimension - 1;
++          let previousTile: Tile | undefined;
+ 
+-      for (let x = 0; x < tileCountPerDimension; x++) {
+-        let newY = tileCountPerDimension - 1;
+-        let previousTile: Tile | undefined;
++          for (let y = tileCountPerDimension - 1; y >= 0; y--) {
++            const tileId = state.board[y][x];
++            const currentTile = state.tiles[tileId];
+ 
+-        for (let y = tileCountPerDimension - 1; y >= 0; y--) {
+-          const tileId = state.board[y][x];
+-          const currentTile = state.tiles[tileId];
++            if (!isNil(tileId)) {
++              if (previousTile?.value === currentTile.value) {
++                score += previousTile.value * 2;
++                newTiles[previousTile.id as string] = {
++                  ...previousTile,
++                  value: previousTile.value * 2,
++                };
++                newTiles[tileId] = {
++                  ...currentTile,
++                  position: [x, newY + 1],
++                };
++                previousTile = undefined;
++                hasChanged = true;
++                continue;
++              }
+ 
+-          if (!isNil(tileId)) {
+-            if (previousTile?.value === currentTile.value) {
+-              score += previousTile.value * 2;
+-              newTiles[previousTile.id as string] = {
+-                ...previousTile,
+-                value: previousTile.value * 2,
+-              };
++              newBoard[newY][x] = tileId;
+               newTiles[tileId] = {
+                 ...currentTile,
+-                position: [x, newY + 1],
++                position: [x, newY],
+               };
+-              previousTile = undefined;
+-              hasChanged = true;
+-              continue;
+-            }
+-
+-            newBoard[newY][x] = tileId;
+-            newTiles[tileId] = {
+-              ...currentTile,
+-              position: [x, newY],
+-            };
+-            previousTile = newTiles[tileId];
+-            if (!isEqual(currentTile.position, [x, newY])) {
+-              hasChanged = true;
++              previousTile = newTiles[tileId];
++              if (!isEqual(currentTile.position, [x, newY])) {
++                hasChanged = true;
++              }
++              newY--;
+             }
+-            newY--;
+           }
+         }
+-      }
+-      return {
+-        ...state,
+-        board: newBoard,
+-        tiles: newTiles,
+-        hasChanged,
+-        score,
+-      };
+-    }
+-    case "move_left": {
+-      const newBoard = createBoard();
+-      const newTiles: TileMap = {};
+-      let hasChanged = false;
+-      let { score } = state;
++      } else if (direction === "move_left") {
++        for (let y = 0; y < tileCountPerDimension; y++) {
++          let newX = 0;
++          let previousTile: Tile | undefined;
+ 
+-      for (let y = 0; y < tileCountPerDimension; y++) {
+-        let newX = 0;
+-        let previousTile: Tile | undefined;
++          for (let x = 0; x < tileCountPerDimension; x++) {
++            const tileId = state.board[y][x];
++            const currentTile = state.tiles[tileId];
+ 
+-        for (let x = 0; x < tileCountPerDimension; x++) {
+-          const tileId = state.board[y][x];
+-          const currentTile = state.tiles[tileId];
++            if (!isNil(tileId)) {
++              if (previousTile?.value === currentTile.value) {
++                score += previousTile.value * 2;
++                newTiles[previousTile.id as string] = {
++                  ...previousTile,
++                  value: previousTile.value * 2,
++                };
++                newTiles[tileId] = {
++                  ...currentTile,
++                  position: [newX - 1, y],
++                };
++                previousTile = undefined;
++                hasChanged = true;
++                continue;
++              }
+ 
+-          if (!isNil(tileId)) {
+-            if (previousTile?.value === currentTile.value) {
+-              score += previousTile.value * 2;
+-              newTiles[previousTile.id as string] = {
+-                ...previousTile,
+-                value: previousTile.value * 2,
+-              };
++              newBoard[y][newX] = tileId;
+               newTiles[tileId] = {
+                 ...currentTile,
+-                position: [newX - 1, y],
++                position: [newX, y],
+               };
+-              previousTile = undefined;
+-              hasChanged = true;
+-              continue;
+-            }
+-
+-            newBoard[y][newX] = tileId;
+-            newTiles[tileId] = {
+-              ...currentTile,
+-              position: [newX, y],
+-            };
+-            previousTile = newTiles[tileId];
+-            if (!isEqual(currentTile.position, [newX, y])) {
+-              hasChanged = true;
++              previousTile = newTiles[tileId];
++              if (!isEqual(currentTile.position, [newX, y])) {
++                hasChanged = true;
++              }
++              newX++;
+             }
+-            newX++;
+           }
+         }
+-      }
+-      return {
+-        ...state,
+-        board: newBoard,
+-        tiles: newTiles,
+-        hasChanged,
+-        score,
+-      };
+-    }
+-    case "move_right": {
+-      const newBoard = createBoard();
+-      const newTiles: TileMap = {};
+-      let hasChanged = false;
+-      let { score } = state;
++      } else if (direction === "move_right") {
++        for (let y = 0; y < tileCountPerDimension; y++) {
++          let newX = tileCountPerDimension - 1;
++          let previousTile: Tile | undefined;
+ 
+-      for (let y = 0; y < tileCountPerDimension; y++) {
+-        let newX = tileCountPerDimension - 1;
+-        let previousTile: Tile | undefined;
++          for (let x = tileCountPerDimension - 1; x >= 0; x--) {
++            const tileId = state.board[y][x];
++            const currentTile = state.tiles[tileId];
+ 
+-        for (let x = tileCountPerDimension - 1; x >= 0; x--) {
+-          const tileId = state.board[y][x];
+-          const currentTile = state.tiles[tileId];
++            if (!isNil(tileId)) {
++              if (previousTile?.value === currentTile.value) {
++                score += previousTile.value * 2;
++                newTiles[previousTile.id as string] = {
++                  ...previousTile,
++                  value: previousTile.value * 2,
++                };
++                newTiles[tileId] = {
++                  ...currentTile,
++                  position: [newX + 1, y],
++                };
++                previousTile = undefined;
++                hasChanged = true;
++                continue;
++              }
+ 
+-          if (!isNil(tileId)) {
+-            if (previousTile?.value === currentTile.value) {
+-              score += previousTile.value * 2;
+-              newTiles[previousTile.id as string] = {
+-                ...previousTile,
+-                value: previousTile.value * 2,
+-              };
++              newBoard[y][newX] = tileId;
+               newTiles[tileId] = {
+-                ...currentTile,
+-                position: [newX + 1, y],
++                ...state.tiles[tileId],
++                position: [newX, y],
+               };
+-              previousTile = undefined;
+-              hasChanged = true;
+-              continue;
++              previousTile = newTiles[tileId];
++              if (!isEqual(currentTile.position, [newX, y])) {
++                hasChanged = true;
++              }
++              newX--;
+             }
+-
+-            newBoard[y][newX] = tileId;
+-            newTiles[tileId] = {
+-              ...state.tiles[tileId],
+-              position: [newX, y],
+-            };
+-            previousTile = newTiles[tileId];
+-            if (!isEqual(currentTile.position, [newX, y])) {
+-              hasChanged = true;
+-            }
+-            newX--;
+           }
+         }
+       }
++
+       return {
+         ...state,
+         board: newBoard,
+         tiles: newTiles,
+         hasChanged,
+         score,
++        moveCount: state.moveCount + 1,
+       };
+     }
+     case "reset_game":
+-      return initialState;
++      return {
++        ...initialState,
++        isTournamentMode: state.isTournamentMode,
++      };
+     case "update_status":
+       return {
+         ...state,
+         status: action.status,
+       };
++    case "set_tournament_mode":
++      return {
++        ...state,
++        isTournamentMode: action.isTournamentMode,
++      };
++    case "increment_timeout_count":
++      return {
++        ...state,
++        timeoutCount: state.timeoutCount + 1,
++      };
++    case "record_thinking_time":
++      return {
++        ...state,
++        totalThinkingTime: state.totalThinkingTime + action.thinkingTime,
++      };
+     default:
+       return state;
+   }
+diff --git a/styles/board.module.css b/styles/board.module.css
+index f2088b2..25cbf36 100644
+--- a/styles/board.module.css
++++ b/styles/board.module.css
+@@ -29,6 +29,13 @@
+   bottom: 0;
+ }
+ 
++.timer {
++  position: absolute;
++  top: calc(var(--pixel-size) * 1);
++  right: calc(var(--pixel-size) * 1);
++  z-index: 4;
++}
++
+ @media (min-width: 512px) {
+   .board {
+     width: calc(var(--pixel-size) * 12.5 * 4 + var(--pixel-size) * 10);
+@@ -47,4 +54,9 @@
+   .tiles {
+     margin: calc(var(--pixel-size) * 1);
+   }
++
++  .timer {
++    top: calc(var(--pixel-size) * 2);
++    right: calc(var(--pixel-size) * 2);
++  }
+ }
+diff --git a/styles/score.module.css b/styles/score.module.css
+index 8871fc5..f8107dc 100644
+--- a/styles/score.module.css
++++ b/styles/score.module.css
+@@ -1,3 +1,9 @@
++.container {
++  display: flex;
++  flex-direction: column;
++  gap: calc(var(--pixel-size) * 0.5);
++}
++
+ .score {
+   background: var(--secondary-background);
+   border: calc(var(--pixel-size) * 0.5) solid var(--secondary-background);
+@@ -15,6 +21,29 @@
+   color: var(--secondary-text-color);
+ }
+ 
++.tournamentStats {
++  display: flex;
++  gap: calc(var(--pixel-size) * 0.5);
++}
++
++.stat {
++  flex: 1;
++  background: var(--secondary-background);
++  border: calc(var(--pixel-size) * 0.5) solid var(--secondary-background);
++  border-radius: calc(var(--pixel-size) * 0.75);
++  color: var(--tile-background);
++  font-size: calc(var(--pixel-size) * 1);
++  line-height: calc(var(--pixel-size) * 2);
++  font-weight: bold;
++  text-align: center;
++  text-transform: uppercase;
++}
++
++.stat > div {
++  font-size: calc(var(--pixel-size) * 1.5);
++  color: var(--secondary-text-color);
++}
++
+ @media (min-width: 512px) {
+   .score {
+     border: calc(var(--pixel-size) * 1) solid var(--secondary-background);
+@@ -25,4 +54,14 @@
+   .score > div {
+     font-size: calc(var(--pixel-size) * 3.5);
+   }
++
++  .stat {
++    border: calc(var(--pixel-size) * 1) solid var(--secondary-background);
++    font-size: calc(var(--pixel-size) * 1.25);
++    line-height: calc(var(--pixel-size) * 2.5);
++  }
++
++  .stat > div {
++    font-size: calc(var(--pixel-size) * 2);
++  }
+ }
+diff --git a/styles/splash.module.css b/styles/splash.module.css
+index 36d17c5..bd3c0a4 100644
+--- a/styles/splash.module.css
++++ b/styles/splash.module.css
+@@ -41,3 +41,33 @@
+   color: white;
+   cursor: pointer;
+ }
++
++.modeSelector {
++  display: flex;
++  gap: calc(var(--pixel-size) * 1);
++  margin: calc(var(--pixel-size) * 2) auto;
++  justify-content: center;
++}
++
++.modeButton {
++  background: rgba(238, 228, 218, 0.7);
++  border: calc(var(--pixel-size) * 0.125) solid #8f7a66;
++  border-radius: calc(var(--pixel-size) * 0.5);
++  font-size: calc(var(--pixel-size) * 1.5);
++  line-height: calc(var(--pixel-size) * 3);
++  padding: calc(var(--pixel-size) * 0.5) calc(var(--pixel-size) * 1.5);
++  font-weight: bold;
++  color: #776e65;
++  cursor: pointer;
++  transition: all 0.2s ease;
++}
++
++.modeButton:hover {
++  background: rgba(238, 228, 218, 0.9);
++}
++
++.modeButton.active {
++  background: #f65e3b;
++  color: white;
++  border-color: #f65e3b;
++}

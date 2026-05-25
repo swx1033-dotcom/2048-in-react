@@ -1,11 +1,12 @@
 import { flattenDeep, isEqual, isNil } from "lodash";
 import { uid } from "uid";
-import { tileCountPerDimension } from "@/constants";
+import { gameWinTileValue, tileCountPerDimension } from "@/constants";
 import { Tile, TileMap } from "@/models/tile";
+import { isGameOver } from "@/utils/moves";
 
-type GameStatus = "ongoing" | "won" | "lost";
+export type GameStatus = "ongoing" | "won" | "lost";
 
-type State = {
+export type State = {
   board: string[][];
   tiles: TileMap;
   tilesByIds: string[];
@@ -13,7 +14,8 @@ type State = {
   score: number;
   status: GameStatus;
 };
-type Action =
+
+export type Action =
   | { type: "create_tile"; tile: Tile }
   | { type: "clean_up" }
   | { type: "move_up" }
@@ -34,6 +36,37 @@ function createBoard() {
   return board;
 }
 
+function hasWinningTile(tiles: TileMap) {
+  return Object.values(tiles).some((tile) => tile.value === gameWinTileValue);
+}
+
+function resolveStatus(
+  state: State,
+  nextBoard: string[][],
+  nextTiles: TileMap,
+): GameStatus {
+  if (state.status === "lost") {
+    return "lost";
+  }
+
+  if (state.status === "won") {
+    return "won";
+  }
+
+  const hadWinningTile = hasWinningTile(state.tiles);
+  const hasWinningTileNow = hasWinningTile(nextTiles);
+
+  if (!hadWinningTile && hasWinningTileNow) {
+    return "won";
+  }
+
+  if (isGameOver(nextBoard, nextTiles)) {
+    return "lost";
+  }
+
+  return "ongoing";
+}
+
 export const initialState: State = {
   board: createBoard(),
   tiles: {},
@@ -43,10 +76,7 @@ export const initialState: State = {
   status: "ongoing",
 };
 
-export default function gameReducer(
-  state: State = initialState,
-  action: Action,
-) {
+export default function gameReducer(state: State, action: Action): State {
   switch (action.type) {
     case "clean_up": {
       const flattenBoard = flattenDeep(state.board);
@@ -72,25 +102,36 @@ export default function gameReducer(
       };
     }
     case "create_tile": {
+      if (state.status === "lost") {
+        return state;
+      }
+
       const tileId = uid();
       const [x, y] = action.tile.position;
       const newBoard = JSON.parse(JSON.stringify(state.board));
+      const newTiles = {
+        ...state.tiles,
+        [tileId]: {
+          id: tileId,
+          ...action.tile,
+        },
+      };
+
       newBoard[y][x] = tileId;
 
       return {
         ...state,
         board: newBoard,
-        tiles: {
-          ...state.tiles,
-          [tileId]: {
-            id: tileId,
-            ...action.tile,
-          },
-        },
+        tiles: newTiles,
         tilesByIds: [...state.tilesByIds, tileId],
+        status: resolveStatus(state, newBoard, newTiles),
       };
     }
     case "move_up": {
+      if (state.status !== "ongoing") {
+        return state;
+      }
+
       const newBoard = createBoard();
       const newTiles: TileMap = {};
       let hasChanged = false;
@@ -133,15 +174,21 @@ export default function gameReducer(
           }
         }
       }
+
       return {
         ...state,
         board: newBoard,
         tiles: newTiles,
         hasChanged,
         score,
+        status: resolveStatus(state, newBoard, newTiles),
       };
     }
     case "move_down": {
+      if (state.status !== "ongoing") {
+        return state;
+      }
+
       const newBoard = createBoard();
       const newTiles: TileMap = {};
       let hasChanged = false;
@@ -184,15 +231,21 @@ export default function gameReducer(
           }
         }
       }
+
       return {
         ...state,
         board: newBoard,
         tiles: newTiles,
         hasChanged,
         score,
+        status: resolveStatus(state, newBoard, newTiles),
       };
     }
     case "move_left": {
+      if (state.status !== "ongoing") {
+        return state;
+      }
+
       const newBoard = createBoard();
       const newTiles: TileMap = {};
       let hasChanged = false;
@@ -235,15 +288,21 @@ export default function gameReducer(
           }
         }
       }
+
       return {
         ...state,
         board: newBoard,
         tiles: newTiles,
         hasChanged,
         score,
+        status: resolveStatus(state, newBoard, newTiles),
       };
     }
     case "move_right": {
+      if (state.status !== "ongoing") {
+        return state;
+      }
+
       const newBoard = createBoard();
       const newTiles: TileMap = {};
       let hasChanged = false;
@@ -286,12 +345,14 @@ export default function gameReducer(
           }
         }
       }
+
       return {
         ...state,
         board: newBoard,
         tiles: newTiles,
         hasChanged,
         score,
+        status: resolveStatus(state, newBoard, newTiles),
       };
     }
     case "reset_game":

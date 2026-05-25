@@ -1,5 +1,6 @@
 import {
   PropsWithChildren,
+  Reducer,
   createContext,
   useCallback,
   useEffect,
@@ -9,15 +10,21 @@ import {
 } from "react";
 import { isNil, throttle } from "lodash";
 import {
-  gameWinTileValue,
   mergeAnimationDuration,
   tileCountPerDimension,
 } from "@/constants";
 import { Tile } from "@/models/tile";
-import gameReducer, { initialState } from "@/reducers/game-reducer";
-import { getRandomMove, isGameOver, MoveDirection } from "@/utils/moves";
-
-type GameStatus = "ongoing" | "won" | "lost";
+import gameReducer, {
+  Action,
+  GameStatus,
+  initialState,
+  State,
+} from "@/reducers/game-reducer";
+import {
+  canMove,
+  getRandomMove,
+  MoveDirection,
+} from "@/utils/moves";
 
 type CompetitionStats = {
   avgThinkingTime: number;
@@ -45,7 +52,12 @@ export const GameContext = createContext<GameContextType>({
   score: 0,
   status: "ongoing",
   isCompetition: false,
-  competitionStats: { avgThinkingTime: 0, timeoutCount: 0, totalMoveTime: 0, moveCount: 0 },
+  competitionStats: {
+    avgThinkingTime: 0,
+    timeoutCount: 0,
+    totalMoveTime: 0,
+    moveCount: 0,
+  },
   countdown: 0,
   countdownDuration: 5000,
   moveTiles: () => {},
@@ -59,7 +71,10 @@ export const GameContext = createContext<GameContextType>({
 const COMPETITION_COUNTDOWN = 5000;
 
 export default function GameProvider({ children }: PropsWithChildren) {
-  const [gameState, dispatch] = useReducer(gameReducer, initialState);
+  const [gameState, dispatch] = useReducer<Reducer<State, Action>>(
+    gameReducer,
+    initialState,
+  );
   const [isCompetition, setIsCompetition] = useState(false);
   const [countdown, setCountdown] = useState(COMPETITION_COUNTDOWN);
   const [competitionStats, setCompetitionStats] = useState<CompetitionStats>({
@@ -70,6 +85,7 @@ export default function GameProvider({ children }: PropsWithChildren) {
   });
 
   const animationFrameRef = useRef<number | undefined>(undefined);
+  const cleanupTimeoutRef = useRef<number | undefined>(undefined);
   const lastMoveTimeRef = useRef<number>(0);
   const isMovingRef = useRef<boolean>(false);
   const isCompetitionRef = useRef<boolean>(false);
@@ -78,6 +94,13 @@ export default function GameProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     gameStateRef.current = gameState;
   }, [gameState]);
+
+  const clearPendingCleanup = useCallback(() => {
+    if (!isNil(cleanupTimeoutRef.current)) {
+      window.clearTimeout(cleanupTimeoutRef.current);
+      cleanupTimeoutRef.current = undefined;
+    }
+  }, []);
 
   const getEmptyCells = useCallback(() => {
     const results: [number, number][] = [];
@@ -123,7 +146,16 @@ export default function GameProvider({ children }: PropsWithChildren) {
 
   const executeMove = useCallback(
     (type: MoveDirection) => {
-      if (isMovingRef.current) return;
+      const { board, tiles, status } = gameStateRef.current;
+
+      if (isMovingRef.current || status !== "ongoing") {
+        return;
+      }
+
+      if (!canMove(board, tiles, type)) {
+        return;
+      }
+
       isMovingRef.current = true;
 
       if (isCompetitionRef.current) {
@@ -162,6 +194,7 @@ export default function GameProvider({ children }: PropsWithChildren) {
 
   const startGame = useCallback(
     (compMode = false) => {
+      clearPendingCleanup();
       stopTimer();
       setIsCompetition(compMode);
       isCompetitionRef.current = compMode;
@@ -182,7 +215,9 @@ export default function GameProvider({ children }: PropsWithChildren) {
       if (compMode) {
         lastMoveTimeRef.current = performance.now();
         const tick = (now: number) => {
-          if (!isCompetitionRef.current) return;
+          if (!isCompetitionRef.current) {
+            return;
+          }
 
           const elapsed = now - lastMoveTimeRef.current;
           const remaining = Math.max(0, COMPETITION_COUNTDOWN - elapsed);
@@ -211,54 +246,41 @@ export default function GameProvider({ children }: PropsWithChildren) {
         animationFrameRef.current = requestAnimationFrame(tick);
       }
     },
-    [stopTimer, executeMove],
+    [clearPendingCleanup, executeMove, stopTimer],
   );
-
-  const checkGameState = useCallback(() => {
-    const { tiles, board } = gameStateRef.current;
-    const isWon =
-      Object.values(tiles).filter((t: Tile) => t.value === gameWinTileValue)
-        .length > 0;
-
-    if (isWon) {
-      dispatch({ type: "update_status", status: "won" });
-      stopTimer();
-      return;
-    }
-
-    if (isGameOver(board, tiles)) {
-      dispatch({ type: "update_status", status: "lost" });
-      stopTimer();
-    }
-  }, [stopTimer]);
 
   useEffect(() => {
     if (gameState.hasChanged) {
-      isMovingRef.current = false;
-      setTimeout(() => {
+      clearPendingCleanup();
+      cleanupTimeoutRef.current = window.setTimeout(() => {
         dispatch({ type: "clean_up" });
         appendRandomTile();
+        cleanupTimeoutRef.current = undefined;
       }, mergeAnimationDuration);
+    } else {
+      isMovingRef.current = false;
     }
-  }, [gameState.hasChanged, appendRandomTile]);
+  }, [appendRandomTile, clearPendingCleanup, gameState.hasChanged]);
 
   useEffect(() => {
-    if (!gameState.hasChanged) {
-      checkGameState();
+    if (gameState.status !== "ongoing") {
+      isMovingRef.current = false;
+      stopTimer();
     }
-  }, [gameState.hasChanged, checkGameState]);
+  }, [gameState.status, stopTimer]);
 
   useEffect(() => {
     return () => {
+      clearPendingCleanup();
       stopTimer();
     };
-  }, [stopTimer]);
+  }, [clearPendingCleanup, stopTimer]);
 
   return (
     <GameContext.Provider
       value={{
         score: gameState.score,
-        status: gameState.status as GameStatus,
+        status: gameState.status,
         isCompetition,
         competitionStats,
         countdown,

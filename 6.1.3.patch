@@ -1,0 +1,180 @@
+diff --git a/components/board.tsx b/components/board.tsx
+index 57e2531..18ea928 100644
+--- a/components/board.tsx
++++ b/components/board.tsx
+@@ -5,14 +5,20 @@ import Tile from "./tile";
+ import { GameContext } from "@/context/game-context";
+ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
+ import Splash from "./splash";
++import useDemo from "@/hooks/use-demo";
+ 
+ export default function Board() {
+   const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
+   const initialized = useRef(false);
++  const { isDemoing, startDemo, stopDemo } = useDemo(moveTiles, status, startGame);
+ 
+   const handleKeyDown = useCallback(
+     (e: KeyboardEvent) => {
+-      // disables page scrolling with keyboard arrows
++      if (isDemoing) {
++        e.preventDefault();
++        return;
++      }
++
+       e.preventDefault();
+ 
+       switch (e.code) {
+@@ -30,11 +36,13 @@ export default function Board() {
+           break;
+       }
+     },
+-    [moveTiles],
++    [moveTiles, isDemoing],
+   );
+ 
+   const handleSwipe = useCallback(
+     ({ deltaX, deltaY }: SwipeInput) => {
++      if (isDemoing) return;
++
+       if (Math.abs(deltaX) > Math.abs(deltaY)) {
+         if (deltaX > 0) {
+           moveTiles("move_right");
+@@ -49,7 +57,7 @@ export default function Board() {
+         }
+       }
+     },
+-    [moveTiles],
++    [moveTiles, isDemoing],
+   );
+ 
+   const renderGrid = () => {
+@@ -87,8 +95,21 @@ export default function Board() {
+   return (
+     <MobileSwiper onSwipe={handleSwipe}>
+       <div className={styles.board}>
+-        {status === "won" && <Splash heading="You won!" type="won" />}
+-        {status === "lost" && <Splash heading="You lost!" />}
++        {status !== "ongoing" && (
++          <Splash
++            heading={status === "won" ? "You won!" : "You lost!"}
++            type={status === "won" ? "won" : ""}
++            onDemo={startDemo}
++          />
++        )}
++        {isDemoing && (
++          <div className={styles.demoOverlay}>
++            <div className={styles.demoText}>演示中…</div>
++            <button className={styles.demoStopButton} onClick={stopDemo}>
++              停止演示
++            </button>
++          </div>
++        )}
+         <div className={styles.tiles}>{renderTiles()}</div>
+         <div className={styles.grid}>{renderGrid()}</div>
+       </div>
+diff --git a/components/splash.tsx b/components/splash.tsx
+index de37256..3a51ced 100644
+--- a/components/splash.tsx
++++ b/components/splash.tsx
+@@ -2,7 +2,13 @@ import { GameContext } from "@/context/game-context";
+ import styles from "@/styles/splash.module.css";
+ import { useContext } from "react";
+ 
+-export default function Splash({ heading = "You won!", type = "" }) {
++type SplashProps = {
++  heading?: string;
++  type?: string;
++  onDemo?: () => void;
++};
++
++export default function Splash({ heading = "You won!", type = "", onDemo }: SplashProps) {
+   const { startGame } = useContext(GameContext);
+ 
+   return (
+@@ -12,6 +18,11 @@ export default function Splash({ heading = "You won!", type = "" }) {
+         <button className={styles.button} onClick={startGame}>
+           Play again
+         </button>
++        {onDemo && (
++          <button className={styles.demoButton} onClick={onDemo}>
++            {"\u25B6"} 自动演示
++          </button>
++        )}
+       </div>
+     </div>
+   );
+diff --git a/styles/board.module.css b/styles/board.module.css
+index f2088b2..2203361 100644
+--- a/styles/board.module.css
++++ b/styles/board.module.css
+@@ -29,6 +29,45 @@
+   bottom: 0;
+ }
+ 
++.demoOverlay {
++  display: flex;
++  flex-direction: column;
++  justify-content: center;
++  align-items: center;
++  position: absolute;
++  text-align: center;
++  z-index: 4;
++  top: 0;
++  left: 0;
++  right: 0;
++  bottom: 0;
++  border-radius: calc(var(--pixel-size) * 0.75);
++  background: rgba(0, 0, 0, 0.5);
++  color: white;
++}
++
++.demoText {
++  font-size: calc(var(--pixel-size) * 3);
++  font-weight: bold;
++  margin-bottom: calc(var(--pixel-size) * 2);
++}
++
++.demoStopButton {
++  background: #8f7a66;
++  border: calc(var(--pixel-size) * 0.125) solid var(--primary-background);
++  border-radius: calc(var(--pixel-size) * 0.5);
++  font-size: calc(var(--pixel-size) * 2);
++  line-height: calc(var(--pixel-size) * 4);
++  padding: calc(var(--pixel-size) * 0.5) calc(var(--pixel-size) * 2);
++  font-weight: bold;
++  color: white;
++  cursor: pointer;
++}
++
++.demoStopButton:hover {
++  background: #9f8b77;
++}
++
+ @media (min-width: 512px) {
+   .board {
+     width: calc(var(--pixel-size) * 12.5 * 4 + var(--pixel-size) * 10);
+diff --git a/styles/splash.module.css b/styles/splash.module.css
+index 36d17c5..946d711 100644
+--- a/styles/splash.module.css
++++ b/styles/splash.module.css
+@@ -41,3 +41,20 @@
+   color: white;
+   cursor: pointer;
+ }
++
++.demoButton {
++  background: #8f7a66;
++  border: calc(var(--pixel-size) * 0.125) solid var(--primary-background);
++  border-radius: calc(var(--pixel-size) * 0.5);
++  font-size: calc(var(--pixel-size) * 2);
++  line-height: calc(var(--pixel-size) * 4);
++  padding: calc(var(--pixel-size) * 0.5) calc(var(--pixel-size) * 2);
++  font-weight: bold;
++  color: white;
++  cursor: pointer;
++  margin-left: calc(var(--pixel-size) * 1);
++}
++
++.demoButton:hover {
++  background: #9f8b77;
++}

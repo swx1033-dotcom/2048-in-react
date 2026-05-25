@@ -5,14 +5,20 @@ import Tile from "./tile";
 import { GameContext } from "@/context/game-context";
 import MobileSwiper, { SwipeInput } from "./mobile-swiper";
 import Splash from "./splash";
+import useDemo from "@/hooks/use-demo";
 
 export default function Board() {
   const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
   const initialized = useRef(false);
+  const { isDemoing, startDemo, stopDemo } = useDemo(moveTiles, status, startGame);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // disables page scrolling with keyboard arrows
+      if (isDemoing) {
+        e.preventDefault();
+        return;
+      }
+
       e.preventDefault();
 
       switch (e.code) {
@@ -30,11 +36,13 @@ export default function Board() {
           break;
       }
     },
-    [moveTiles],
+    [moveTiles, isDemoing],
   );
 
   const handleSwipe = useCallback(
     ({ deltaX, deltaY }: SwipeInput) => {
+      if (isDemoing) return;
+
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
         if (deltaX > 0) {
           moveTiles("move_right");
@@ -49,7 +57,7 @@ export default function Board() {
         }
       }
     },
-    [moveTiles],
+    [moveTiles, isDemoing],
   );
 
   const renderGrid = () => {
@@ -87,8 +95,21 @@ export default function Board() {
   return (
     <MobileSwiper onSwipe={handleSwipe}>
       <div className={styles.board}>
-        {status === "won" && <Splash heading="You won!" type="won" />}
-        {status === "lost" && <Splash heading="You lost!" />}
+        {status !== "ongoing" && (
+          <Splash
+            heading={status === "won" ? "You won!" : "You lost!"}
+            type={status === "won" ? "won" : ""}
+            onDemo={startDemo}
+          />
+        )}
+        {isDemoing && (
+          <div className={styles.demoOverlay}>
+            <div className={styles.demoText}>演示中…</div>
+            <button className={styles.demoStopButton} onClick={stopDemo}>
+              停止演示
+            </button>
+          </div>
+        )}
         <div className={styles.tiles}>{renderTiles()}</div>
         <div className={styles.grid}>{renderGrid()}</div>
       </div>

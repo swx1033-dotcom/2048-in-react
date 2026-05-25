@@ -41,3 +41,20 @@
   color: white;
   cursor: pointer;
 }
+
+.demoButton {
+  background: #8f7a66;
+  border: calc(var(--pixel-size) * 0.125) solid var(--primary-background);
+  border-radius: calc(var(--pixel-size) * 0.5);
+  font-size: calc(var(--pixel-size) * 2);
+  line-height: calc(var(--pixel-size) * 4);
+  padding: calc(var(--pixel-size) * 0.5) calc(var(--pixel-size) * 2);
+  font-weight: bold;
+  color: white;
+  cursor: pointer;
+  margin-left: calc(var(--pixel-size) * 1);
+}
+
+.demoButton:hover {
+  background: #9f8b77;
+}

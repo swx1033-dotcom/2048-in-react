@@ -48,3 +48,42 @@
     margin: calc(var(--pixel-size) * 1);
   }
 }
+
+.demoOverlay {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: calc(var(--pixel-size) * 0.75);
+  background: rgba(0, 0, 0, 0.5);
+  gap: calc(var(--pixel-size) * 2);
+}
+
+.demoText {
+  color: white;
+  font-size: calc(var(--pixel-size) * 3);
+  font-weight: bold;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.demoButton {
+  background: var(--button-background);
+  border: calc(var(--pixel-size) * 0.125) solid var(--primary-background);
+  border-radius: calc(var(--pixel-size) * 0.5);
+  font-size: calc(var(--pixel-size) * 2);
+  line-height: calc(var(--pixel-size) * 4);
+  padding: calc(var(--pixel-size) * 0.5) calc(var(--pixel-size) * 2);
+  font-weight: bold;
+  color: white;
+  cursor: pointer;
+}
+
+.demoButton:hover {
+  opacity: 0.9;
+}

@@ -5,14 +5,23 @@ import Tile from "./tile";
 import { GameContext } from "@/context/game-context";
 import MobileSwiper, { SwipeInput } from "./mobile-swiper";
 import Splash from "./splash";
+import TournamentTimer from "./tournament-timer";
 
 export default function Board() {
-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
-  const initialized = useRef(false);
+  const {
+    getTiles,
+    moveTiles,
+    startGame,
+    status,
+    gameMode,
+    timerRemaining,
+    timerProgress,
+    tournamentStats,
+  } = useContext(GameContext);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // disables page scrolling with keyboard arrows
+      if (status !== "ongoing") return;
       e.preventDefault();
 
       switch (e.code) {
@@ -30,11 +39,13 @@ export default function Board() {
           break;
       }
     },
-    [moveTiles],
+    [moveTiles, status],
   );
 
   const handleSwipe = useCallback(
     ({ deltaX, deltaY }: SwipeInput) => {
+      if (status !== "ongoing") return;
+
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
         if (deltaX > 0) {
           moveTiles("move_right");
@@ -49,7 +60,7 @@ export default function Board() {
         }
       }
     },
-    [moveTiles],
+    [moveTiles, status],
   );
 
   const renderGrid = () => {
@@ -70,13 +81,6 @@ export default function Board() {
   };
 
   useEffect(() => {
-    if (initialized.current === false) {
-      startGame();
-      initialized.current = true;
-    }
-  }, [startGame]);
-
-  useEffect(() => {
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
@@ -84,14 +88,34 @@ export default function Board() {
     };
   }, [handleKeyDown]);
 
+  const avgThinkTime =
+    tournamentStats.moveCount > 0
+      ? (tournamentStats.totalThinkTime / tournamentStats.moveCount / 1000).toFixed(2)
+      : "0.00";
+
   return (
-    <MobileSwiper onSwipe={handleSwipe}>
-      <div className={styles.board}>
-        {status === "won" && <Splash heading="You won!" type="won" />}
-        {status === "lost" && <Splash heading="You lost!" />}
-        <div className={styles.tiles}>{renderTiles()}</div>
-        <div className={styles.grid}>{renderGrid()}</div>
-      </div>
-    </MobileSwiper>
+    <>
+      {gameMode === "tournament" && status === "ongoing" && (
+        <div className={styles.tournamentHud}>
+          <TournamentTimer
+            remaining={timerRemaining}
+            progress={timerProgress}
+          />
+          <div className={styles.tournamentStats}>
+            <span>Avg: {avgThinkTime}s</span>
+            <span>Timeouts: {tournamentStats.timeoutCount}</span>
+          </div>
+        </div>
+      )}
+      <MobileSwiper onSwipe={handleSwipe}>
+        <div className={styles.board}>
+          {status === "idle" && <Splash type="idle" />}
+          {status === "won" && <Splash heading="You won!" type="won" />}
+          {status === "lost" && <Splash heading="You lost!" />}
+          <div className={styles.tiles}>{renderTiles()}</div>
+          <div className={styles.grid}>{renderGrid()}</div>
+        </div>
+      </MobileSwiper>
+    </>
   );
 }

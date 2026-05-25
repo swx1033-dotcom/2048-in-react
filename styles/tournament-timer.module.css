@@ -1,0 +1,31 @@
+.timer {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.svg {
+  transform: scaleX(-1);
+}
+
+.track {
+  stroke: rgba(255, 255, 255, 0.15);
+}
+
+.progress {
+  stroke: #f65e3b;
+  transition: stroke 0.2s ease;
+}
+
+.timer.warning .progress {
+  stroke: #e8a317;
+}
+
+.seconds {
+  position: absolute;
+  font-size: calc(var(--pixel-size) * 1.2);
+  font-weight: 700;
+  color: white;
+  line-height: 1;
+}

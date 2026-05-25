@@ -3,7 +3,8 @@ import { uid } from "uid";
 import { tileCountPerDimension } from "@/constants";
 import { Tile, TileMap } from "@/models/tile";
 
-type GameStatus = "ongoing" | "won" | "lost";
+type GameStatus = "idle" | "ongoing" | "won" | "lost";
+type GameMode = "normal" | "tournament";
 
 type State = {
   board: string[][];
@@ -12,6 +13,12 @@ type State = {
   hasChanged: boolean;
   score: number;
   status: GameStatus;
+  gameMode: GameMode;
+  tournamentStats: {
+    timeoutCount: number;
+    totalThinkTime: number;
+    moveCount: number;
+  };
 };
 type Action =
   | { type: "create_tile"; tile: Tile }
@@ -21,7 +28,11 @@ type Action =
   | { type: "move_left" }
   | { type: "move_right" }
   | { type: "reset_game" }
-  | { type: "update_status"; status: GameStatus };
+  | { type: "update_status"; status: GameStatus }
+  | { type: "set_game_mode"; gameMode: GameMode }
+  | { type: "start_game" }
+  | { type: "record_timeout" }
+  | { type: "record_think_time"; time: number };
 
 function createBoard() {
   const board: string[][] = [];
@@ -39,7 +50,13 @@ export const initialState: State = {
   tilesByIds: [],
   hasChanged: false,
   score: 0,
-  status: "ongoing",
+  status: "idle",
+  gameMode: "normal",
+  tournamentStats: {
+    timeoutCount: 0,
+    totalThinkTime: 0,
+    moveCount: 0,
+  },
 };
 
 export default function gameReducer(
@@ -294,11 +311,41 @@ export default function gameReducer(
       };
     }
     case "reset_game":
-      return initialState;
+      return {
+        ...initialState,
+        gameMode: state.gameMode,
+      };
     case "update_status":
       return {
         ...state,
         status: action.status,
+      };
+    case "set_game_mode":
+      return {
+        ...state,
+        gameMode: action.gameMode,
+      };
+    case "start_game":
+      return {
+        ...state,
+        status: "ongoing",
+      };
+    case "record_timeout":
+      return {
+        ...state,
+        tournamentStats: {
+          ...state.tournamentStats,
+          timeoutCount: state.tournamentStats.timeoutCount + 1,
+        },
+      };
+    case "record_think_time":
+      return {
+        ...state,
+        tournamentStats: {
+          ...state.tournamentStats,
+          totalThinkTime: state.tournamentStats.totalThinkTime + action.time,
+          moveCount: state.tournamentStats.moveCount + 1,
+        },
       };
     default:
       return state;

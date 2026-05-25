@@ -41,3 +41,33 @@
   color: white;
   cursor: pointer;
 }
+
+.modeSelector {
+  display: flex;
+  gap: calc(var(--pixel-size) * 1);
+  justify-content: center;
+  margin: calc(var(--pixel-size) * 2) 0;
+}
+
+.modeButton {
+  background: rgba(255, 255, 255, 0.1);
+  border: calc(var(--pixel-size) * 0.125) solid rgba(255, 255, 255, 0.3);
+  border-radius: calc(var(--pixel-size) * 0.5);
+  font-size: calc(var(--pixel-size) * 1.5);
+  line-height: calc(var(--pixel-size) * 3);
+  padding: calc(var(--pixel-size) * 0.5) calc(var(--pixel-size) * 1.5);
+  font-weight: bold;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.modeButton:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.modeActive {
+  background: var(--button-background);
+  border-color: var(--primary-background);
+  color: white;
+}

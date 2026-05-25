@@ -1,0 +1,805 @@
+diff --git a/5.1.1.patch b/5.1.1.patch
+deleted file mode 100644
+index 298e6c3..0000000
+--- a/5.1.1.patch
++++ /dev/null
+@@ -1,799 +0,0 @@
+-diff --git a/components/GameStatusModal.tsx b/components/GameStatusModal.tsx
+-index ede9e99..bda72a5 100644
+---- a/components/GameStatusModal.tsx
+-+++ b/components/GameStatusModal.tsx
+-@@ -1,22 +1,25 @@
+-+import { useContext, useEffect, useState } from "react";
+- import { GameContext } from "@/context/game-context";
+--import { useContext, useState } from "react";
+-+import { GameStatus } from "@/reducers/game-reducer";
+- import Fireworks from "./Fireworks";
+- import Flash from "./Flash";
+- import styles from "@/styles/gameStatusModal.module.css";
+- 
+--type GameStatusType = "won" | "lost";
+--
+--interface GameStatusModalProps {
+--  status: GameStatusType;
+--}
+-+type GameStatusModalProps = {
+-+  status: Exclude<GameStatus, "ongoing">;
+-+};
+- 
+- export default function GameStatusModal({ status }: GameStatusModalProps) {
+--  const { startGame, continueGame } = useContext(GameContext);
+--  const [isCompetition, setIsCompetition] = useState(false);
+-+  const { continueGame, isCompetition, startGame } = useContext(GameContext);
+-+  const [competitionMode, setCompetitionMode] = useState(isCompetition);
+-   const isWon = status === "won";
+- 
+-+  useEffect(() => {
+-+    setCompetitionMode(isCompetition);
+-+  }, [isCompetition, status]);
+-+
+-   const handlePlayAgain = () => {
+--    startGame(isCompetition);
+-+    startGame(competitionMode);
+-   };
+- 
+-   const handleContinue = () => {
+-@@ -24,21 +27,30 @@ export default function GameStatusModal({ status }: GameStatusModalProps) {
+-   };
+- 
+-   return (
+--    <div className={`${styles.modal} ${isWon ? styles.win : styles.lose}`}>
+-+    <div
+-+      className={`${styles.modal} ${isWon ? styles.win : styles.lose}`}
+-+      role="dialog"
+-+      aria-modal="true"
+-+      aria-labelledby="game-status-heading"
+-+    >
+-       <Flash active={isWon} />
+-       <Fireworks active={isWon} />
+-       <div className={styles.content}>
+--        <h1 className={styles.heading}>
+--          {isWon ? "You won!" : "Game Over"}
+-+        <h1 id="game-status-heading" className={styles.heading}>
+-+          {isWon ? "恭喜通关！" : "Game Over"}
+-         </h1>
+-+        <p className={styles.message}>
+-+          {isWon
+-+            ? "你已经合成 2048，可选择停在这里，或继续挑战更高分数。"
+-+            : "棋盘已满且没有可合并的数字，点击重试开始新一局。"}
+-+        </p>
+-         {isWon && (
+--          <div className={styles.continueOption}>
+--            <p>Want to continue playing for a higher score?</p>
+-+          <div className={styles.actions}>
+-             <button
+-               className={`${styles.button} ${styles.secondary}`}
+-               onClick={handleContinue}
+-             >
+--              Continue
+-+              继续挑战
+-             </button>
+-           </div>
+-         )}
+-@@ -46,16 +58,18 @@ export default function GameStatusModal({ status }: GameStatusModalProps) {
+-           <label className={styles.modeLabel}>
+-             <input
+-               type="checkbox"
+--              checked={isCompetition}
+--              onChange={(e) => setIsCompetition(e.target.checked)}
+-+              checked={competitionMode}
+-+              onChange={(e) => setCompetitionMode(e.target.checked)}
+-               className={styles.modeCheckbox}
+-             />
+-             <span>比赛模式</span>
+-           </label>
+-         </div>
+--        <button className={styles.button} onClick={handlePlayAgain}>
+--          Play again
+--        </button>
+-+        <div className={styles.actions}>
+-+          <button className={styles.button} onClick={handlePlayAgain}>
+-+            {isWon ? "重新开始" : "重试"}
+-+          </button>
+-+        </div>
+-       </div>
+-     </div>
+-   );
+-diff --git a/components/board.tsx b/components/board.tsx
+-index 5533542..3eb907f 100644
+---- a/components/board.tsx
+-+++ b/components/board.tsx
+-@@ -4,7 +4,7 @@ import styles from "@/styles/board.module.css";
+- import Tile from "./tile";
+- import { GameContext } from "@/context/game-context";
+- import MobileSwiper, { SwipeInput } from "./mobile-swiper";
+--import GameStatusModal from "./GameStatusModal";
+-+import Splash from "./splash";
+- import CircularTimer from "./circular-timer";
+- 
+- export default function Board() {
+-@@ -14,8 +14,10 @@ export default function Board() {
+- 
+-   const handleKeyDown = useCallback(
+-     (e: KeyboardEvent) => {
+--      if (!isGameActive) return;
+--      
+-+      if (!isGameActive) {
+-+        return;
+-+      }
+-+
+-       e.preventDefault();
+- 
+-       switch (e.code) {
+-@@ -38,20 +40,20 @@ export default function Board() {
+- 
+-   const handleSwipe = useCallback(
+-     ({ deltaX, deltaY }: SwipeInput) => {
+--      if (!isGameActive) return;
+--      
+-+      if (!isGameActive) {
+-+        return;
+-+      }
+-+
+-       if (Math.abs(deltaX) > Math.abs(deltaY)) {
+-         if (deltaX > 0) {
+-           moveTiles("move_right");
+-         } else {
+-           moveTiles("move_left");
+-         }
+-+      } else if (deltaY > 0) {
+-+        moveTiles("move_down");
+-       } else {
+--        if (deltaY > 0) {
+--          moveTiles("move_down");
+--        } else {
+--          moveTiles("move_up");
+--        }
+-+        moveTiles("move_up");
+-       }
+-     },
+-     [moveTiles, isGameActive],
+-@@ -95,12 +97,10 @@ export default function Board() {
+-         <div className={styles.timerContainer}>
+-           <CircularTimer />
+-         </div>
+--        {(status === "won" || status === "lost") && (
+--          <GameStatusModal status={status} />
+--        )}
+-+        <Splash />
+-         <div className={styles.tiles}>{renderTiles()}</div>
+-         <div className={styles.grid}>{renderGrid()}</div>
+-       </div>
+-     </MobileSwiper>
+-   );
+--}
+-\ No newline at end of file
+-+}
+-diff --git a/components/splash.tsx b/components/splash.tsx
+-index 4f0674a..db75e06 100644
+---- a/components/splash.tsx
+-+++ b/components/splash.tsx
+-@@ -1,34 +1,13 @@
+-+import { useContext } from "react";
+- import { GameContext } from "@/context/game-context";
+--import styles from "@/styles/splash.module.css";
+--import { useContext, useState } from "react";
+-+import GameStatusModal from "./GameStatusModal";
+- 
+--export default function Splash({ heading = "You won!", type = "" }: { heading?: string; type?: string }) {
+--  const { startGame } = useContext(GameContext);
+--  const [isCompetition, setIsCompetition] = useState(false);
+-+export default function Splash() {
+-+  const { status } = useContext(GameContext);
+- 
+--  const handleStartGame = () => {
+--    startGame(isCompetition);
+--  };
+-+  if (status === "ongoing") {
+-+    return null;
+-+  }
+- 
+--  return (
+--    <div className={`${styles.splash} ${type === "won" && styles.win}`}>
+--      <div>
+--        <h1>{heading}</h1>
+--        <div className={styles.modeSelection}>
+--          <label className={styles.modeLabel}>
+--            <input
+--              type="checkbox"
+--              checked={isCompetition}
+--              onChange={(e) => setIsCompetition(e.target.checked)}
+--              className={styles.modeCheckbox}
+--            />
+--            <span>比赛模式</span>
+--          </label>
+--        </div>
+--        <button className={styles.button} onClick={handleStartGame}>
+--          Play again
+--        </button>
+--      </div>
+--    </div>
+--  );
+--}
+-\ No newline at end of file
+-+  return <GameStatusModal status={status} />;
+-+}
+-diff --git a/context/game-context.tsx b/context/game-context.tsx
+-index a215bf9..c488eb0 100644
+---- a/context/game-context.tsx
+-+++ b/context/game-context.tsx
+-@@ -1,5 +1,6 @@
+- import {
+-   PropsWithChildren,
+-+  Reducer,
+-   createContext,
+-   useCallback,
+-   useEffect,
+-@@ -9,15 +10,21 @@ import {
+- } from "react";
+- import { isNil, throttle } from "lodash";
+- import {
+--  gameWinTileValue,
+-   mergeAnimationDuration,
+-   tileCountPerDimension,
+- } from "@/constants";
+- import { Tile } from "@/models/tile";
+--import gameReducer, { initialState } from "@/reducers/game-reducer";
+--import { getRandomMove, isGameOver, MoveDirection } from "@/utils/moves";
+--
+--type GameStatus = "ongoing" | "won" | "lost";
+-+import gameReducer, {
+-+  Action,
+-+  GameStatus,
+-+  initialState,
+-+  State,
+-+} from "@/reducers/game-reducer";
+-+import {
+-+  canMove,
+-+  getRandomMove,
+-+  MoveDirection,
+-+} from "@/utils/moves";
+- 
+- type CompetitionStats = {
+-   avgThinkingTime: number;
+-@@ -45,7 +52,12 @@ export const GameContext = createContext<GameContextType>({
+-   score: 0,
+-   status: "ongoing",
+-   isCompetition: false,
+--  competitionStats: { avgThinkingTime: 0, timeoutCount: 0, totalMoveTime: 0, moveCount: 0 },
+-+  competitionStats: {
+-+    avgThinkingTime: 0,
+-+    timeoutCount: 0,
+-+    totalMoveTime: 0,
+-+    moveCount: 0,
+-+  },
+-   countdown: 0,
+-   countdownDuration: 5000,
+-   moveTiles: () => {},
+-@@ -59,7 +71,10 @@ export const GameContext = createContext<GameContextType>({
+- const COMPETITION_COUNTDOWN = 5000;
+- 
+- export default function GameProvider({ children }: PropsWithChildren) {
+--  const [gameState, dispatch] = useReducer(gameReducer, initialState);
+-+  const [gameState, dispatch] = useReducer<Reducer<State, Action>>(
+-+    gameReducer,
+-+    initialState,
+-+  );
+-   const [isCompetition, setIsCompetition] = useState(false);
+-   const [countdown, setCountdown] = useState(COMPETITION_COUNTDOWN);
+-   const [competitionStats, setCompetitionStats] = useState<CompetitionStats>({
+-@@ -70,6 +85,7 @@ export default function GameProvider({ children }: PropsWithChildren) {
+-   });
+- 
+-   const animationFrameRef = useRef<number | undefined>(undefined);
+-+  const cleanupTimeoutRef = useRef<number | undefined>(undefined);
+-   const lastMoveTimeRef = useRef<number>(0);
+-   const isMovingRef = useRef<boolean>(false);
+-   const isCompetitionRef = useRef<boolean>(false);
+-@@ -79,6 +95,13 @@ export default function GameProvider({ children }: PropsWithChildren) {
+-     gameStateRef.current = gameState;
+-   }, [gameState]);
+- 
+-+  const clearPendingCleanup = useCallback(() => {
+-+    if (!isNil(cleanupTimeoutRef.current)) {
+-+      window.clearTimeout(cleanupTimeoutRef.current);
+-+      cleanupTimeoutRef.current = undefined;
+-+    }
+-+  }, []);
+-+
+-   const getEmptyCells = useCallback(() => {
+-     const results: [number, number][] = [];
+-     const { board } = gameStateRef.current;
+-@@ -123,7 +146,16 @@ export default function GameProvider({ children }: PropsWithChildren) {
+- 
+-   const executeMove = useCallback(
+-     (type: MoveDirection) => {
+--      if (isMovingRef.current) return;
+-+      const { board, tiles, status } = gameStateRef.current;
+-+
+-+      if (isMovingRef.current || status !== "ongoing") {
+-+        return;
+-+      }
+-+
+-+      if (!canMove(board, tiles, type)) {
+-+        return;
+-+      }
+-+
+-       isMovingRef.current = true;
+- 
+-       if (isCompetitionRef.current) {
+-@@ -162,6 +194,7 @@ export default function GameProvider({ children }: PropsWithChildren) {
+- 
+-   const startGame = useCallback(
+-     (compMode = false) => {
+-+      clearPendingCleanup();
+-       stopTimer();
+-       setIsCompetition(compMode);
+-       isCompetitionRef.current = compMode;
+-@@ -182,7 +215,9 @@ export default function GameProvider({ children }: PropsWithChildren) {
+-       if (compMode) {
+-         lastMoveTimeRef.current = performance.now();
+-         const tick = (now: number) => {
+--          if (!isCompetitionRef.current) return;
+-+          if (!isCompetitionRef.current) {
+-+            return;
+-+          }
+- 
+-           const elapsed = now - lastMoveTimeRef.current;
+-           const remaining = Math.max(0, COMPETITION_COUNTDOWN - elapsed);
+-@@ -211,54 +246,41 @@ export default function GameProvider({ children }: PropsWithChildren) {
+-         animationFrameRef.current = requestAnimationFrame(tick);
+-       }
+-     },
+--    [stopTimer, executeMove],
+-+    [clearPendingCleanup, executeMove, stopTimer],
+-   );
+- 
+--  const checkGameState = useCallback(() => {
+--    const { tiles, board } = gameStateRef.current;
+--    const isWon =
+--      Object.values(tiles).filter((t: Tile) => t.value === gameWinTileValue)
+--        .length > 0;
+--
+--    if (isWon) {
+--      dispatch({ type: "update_status", status: "won" });
+--      stopTimer();
+--      return;
+--    }
+--
+--    if (isGameOver(board, tiles)) {
+--      dispatch({ type: "update_status", status: "lost" });
+--      stopTimer();
+--    }
+--  }, [stopTimer]);
+--
+-   useEffect(() => {
+-     if (gameState.hasChanged) {
+--      isMovingRef.current = false;
+--      setTimeout(() => {
+-+      clearPendingCleanup();
+-+      cleanupTimeoutRef.current = window.setTimeout(() => {
+-         dispatch({ type: "clean_up" });
+-         appendRandomTile();
+-+        cleanupTimeoutRef.current = undefined;
+-       }, mergeAnimationDuration);
+-+    } else {
+-+      isMovingRef.current = false;
+-     }
+--  }, [gameState.hasChanged, appendRandomTile]);
+-+  }, [appendRandomTile, clearPendingCleanup, gameState.hasChanged]);
+- 
+-   useEffect(() => {
+--    if (!gameState.hasChanged) {
+--      checkGameState();
+-+    if (gameState.status !== "ongoing") {
+-+      isMovingRef.current = false;
+-+      stopTimer();
+-     }
+--  }, [gameState.hasChanged, checkGameState]);
+-+  }, [gameState.status, stopTimer]);
+- 
+-   useEffect(() => {
+-     return () => {
+-+      clearPendingCleanup();
+-       stopTimer();
+-     };
+--  }, [stopTimer]);
+-+  }, [clearPendingCleanup, stopTimer]);
+- 
+-   return (
+-     <GameContext.Provider
+-       value={{
+-         score: gameState.score,
+--        status: gameState.status as GameStatus,
+-+        status: gameState.status,
+-         isCompetition,
+-         competitionStats,
+-         countdown,
+-@@ -274,4 +296,4 @@ export default function GameProvider({ children }: PropsWithChildren) {
+-       {children}
+-     </GameContext.Provider>
+-   );
+--}
+-\ No newline at end of file
+-+}
+-diff --git a/reducers/game-reducer.ts b/reducers/game-reducer.ts
+-index f3f697f..ac6e3bc 100644
+---- a/reducers/game-reducer.ts
+-+++ b/reducers/game-reducer.ts
+-@@ -1,11 +1,12 @@
+- import { flattenDeep, isEqual, isNil } from "lodash";
+- import { uid } from "uid";
+--import { tileCountPerDimension } from "@/constants";
+-+import { gameWinTileValue, tileCountPerDimension } from "@/constants";
+- import { Tile, TileMap } from "@/models/tile";
+-+import { isGameOver } from "@/utils/moves";
+- 
+--type GameStatus = "ongoing" | "won" | "lost";
+-+export type GameStatus = "ongoing" | "won" | "lost";
+- 
+--type State = {
+-+export type State = {
+-   board: string[][];
+-   tiles: TileMap;
+-   tilesByIds: string[];
+-@@ -13,7 +14,8 @@ type State = {
+-   score: number;
+-   status: GameStatus;
+- };
+--type Action =
+-+
+-+export type Action =
+-   | { type: "create_tile"; tile: Tile }
+-   | { type: "clean_up" }
+-   | { type: "move_up" }
+-@@ -34,6 +36,37 @@ function createBoard() {
+-   return board;
+- }
+- 
+-+function hasWinningTile(tiles: TileMap) {
+-+  return Object.values(tiles).some((tile) => tile.value === gameWinTileValue);
+-+}
+-+
+-+function resolveStatus(
+-+  state: State,
+-+  nextBoard: string[][],
+-+  nextTiles: TileMap,
+-+): GameStatus {
+-+  if (state.status === "lost") {
+-+    return "lost";
+-+  }
+-+
+-+  if (state.status === "won") {
+-+    return "won";
+-+  }
+-+
+-+  const hadWinningTile = hasWinningTile(state.tiles);
+-+  const hasWinningTileNow = hasWinningTile(nextTiles);
+-+
+-+  if (!hadWinningTile && hasWinningTileNow) {
+-+    return "won";
+-+  }
+-+
+-+  if (isGameOver(nextBoard, nextTiles)) {
+-+    return "lost";
+-+  }
+-+
+-+  return "ongoing";
+-+}
+-+
+- export const initialState: State = {
+-   board: createBoard(),
+-   tiles: {},
+-@@ -43,10 +76,7 @@ export const initialState: State = {
+-   status: "ongoing",
+- };
+- 
+--export default function gameReducer(
+--  state: State = initialState,
+--  action: Action,
+--) {
+-+export default function gameReducer(state: State, action: Action): State {
+-   switch (action.type) {
+-     case "clean_up": {
+-       const flattenBoard = flattenDeep(state.board);
+-@@ -72,25 +102,36 @@ export default function gameReducer(
+-       };
+-     }
+-     case "create_tile": {
+-+      if (state.status === "lost") {
+-+        return state;
+-+      }
+-+
+-       const tileId = uid();
+-       const [x, y] = action.tile.position;
+-       const newBoard = JSON.parse(JSON.stringify(state.board));
+-+      const newTiles = {
+-+        ...state.tiles,
+-+        [tileId]: {
+-+          id: tileId,
+-+          ...action.tile,
+-+        },
+-+      };
+-+
+-       newBoard[y][x] = tileId;
+- 
+-       return {
+-         ...state,
+-         board: newBoard,
+--        tiles: {
+--          ...state.tiles,
+--          [tileId]: {
+--            id: tileId,
+--            ...action.tile,
+--          },
+--        },
+-+        tiles: newTiles,
+-         tilesByIds: [...state.tilesByIds, tileId],
+-+        status: resolveStatus(state, newBoard, newTiles),
+-       };
+-     }
+-     case "move_up": {
+-+      if (state.status !== "ongoing") {
+-+        return state;
+-+      }
+-+
+-       const newBoard = createBoard();
+-       const newTiles: TileMap = {};
+-       let hasChanged = false;
+-@@ -133,15 +174,21 @@ export default function gameReducer(
+-           }
+-         }
+-       }
+-+
+-       return {
+-         ...state,
+-         board: newBoard,
+-         tiles: newTiles,
+-         hasChanged,
+-         score,
+-+        status: resolveStatus(state, newBoard, newTiles),
+-       };
+-     }
+-     case "move_down": {
+-+      if (state.status !== "ongoing") {
+-+        return state;
+-+      }
+-+
+-       const newBoard = createBoard();
+-       const newTiles: TileMap = {};
+-       let hasChanged = false;
+-@@ -184,15 +231,21 @@ export default function gameReducer(
+-           }
+-         }
+-       }
+-+
+-       return {
+-         ...state,
+-         board: newBoard,
+-         tiles: newTiles,
+-         hasChanged,
+-         score,
+-+        status: resolveStatus(state, newBoard, newTiles),
+-       };
+-     }
+-     case "move_left": {
+-+      if (state.status !== "ongoing") {
+-+        return state;
+-+      }
+-+
+-       const newBoard = createBoard();
+-       const newTiles: TileMap = {};
+-       let hasChanged = false;
+-@@ -235,15 +288,21 @@ export default function gameReducer(
+-           }
+-         }
+-       }
+-+
+-       return {
+-         ...state,
+-         board: newBoard,
+-         tiles: newTiles,
+-         hasChanged,
+-         score,
+-+        status: resolveStatus(state, newBoard, newTiles),
+-       };
+-     }
+-     case "move_right": {
+-+      if (state.status !== "ongoing") {
+-+        return state;
+-+      }
+-+
+-       const newBoard = createBoard();
+-       const newTiles: TileMap = {};
+-       let hasChanged = false;
+-@@ -286,12 +345,14 @@ export default function gameReducer(
+-           }
+-         }
+-       }
+-+
+-       return {
+-         ...state,
+-         board: newBoard,
+-         tiles: newTiles,
+-         hasChanged,
+-         score,
+-+        status: resolveStatus(state, newBoard, newTiles),
+-       };
+-     }
+-     case "reset_game":
+-diff --git a/styles/gameStatusModal.module.css b/styles/gameStatusModal.module.css
+-index 444a5a8..c115840 100644
+---- a/styles/gameStatusModal.module.css
+-+++ b/styles/gameStatusModal.module.css
+-@@ -26,22 +26,28 @@
+-   margin: 0 auto;
+-   position: relative;
+-   z-index: 1;
+-+  max-width: min(90%, 420px);
+-+  padding: 0 1rem;
+- }
+- 
+- .heading {
+-   color: rgba(240, 240, 240, 1);
+-   font-size: 2.5rem;
+-   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+--  margin-bottom: 1.5rem;
+-+  margin-bottom: 1rem;
+- }
+- 
+--.continueOption {
+--  margin-bottom: 1.5rem;
+--  color: rgba(240, 240, 240, 1);
+-+.message {
+-+  margin: 0 0 1.5rem;
+-+  color: rgba(255, 255, 255, 0.95);
+-+  font-size: 1rem;
+-+  line-height: 1.6;
+- }
+- 
+--.continueOption p {
+--  margin-bottom: 0.75rem;
+-+.actions {
+-+  display: flex;
+-+  justify-content: center;
+-+  flex-wrap: wrap;
+- }
+- 
+- .button {
+-diff --git a/utils/moves.ts b/utils/moves.ts
+-index 1a7c04c..480a295 100644
+---- a/utils/moves.ts
+-+++ b/utils/moves.ts
+-@@ -1,7 +1,11 @@
+--import { TileMap } from "@/models/tile";
+- import { isNil } from "lodash";
+-+import { TileMap } from "@/models/tile";
+- 
+--export type MoveDirection = "move_up" | "move_down" | "move_left" | "move_right";
+-+export type MoveDirection =
+-+  | "move_up"
+-+  | "move_down"
+-+  | "move_left"
+-+  | "move_right";
+- 
+- export function canMove(
+-   board: string[][],
+-@@ -13,44 +17,55 @@ export function canMove(
+-   for (let y = 0; y < size; y++) {
+-     for (let x = 0; x < size; x++) {
+-       const tileId = board[y][x];
+--      if (isNil(tileId)) continue;
+--
+--      const tile = tiles[tileId];
+--      const [tx, ty] = tile.position;
+-+      if (isNil(tileId)) {
+-+        continue;
+-+      }
+- 
+-       switch (direction) {
+--        case "move_up":
+--          if (ty > 0) {
+--            const aboveId = board[ty - 1][tx];
+--            if (isNil(aboveId) || tiles[aboveId]?.value === tile.value) {
+--              return true;
+--            }
+-+        case "move_up": {
+-+          if (y === 0) {
+-+            break;
+-+          }
+-+
+-+          const aboveId = board[y - 1][x];
+-+          if (isNil(aboveId) || tiles[aboveId]?.value === tiles[tileId]?.value) {
+-+            return true;
+-           }
+-           break;
+--        case "move_down":
+--          if (ty < size - 1) {
+--            const belowId = board[ty + 1][tx];
+--            if (isNil(belowId) || tiles[belowId]?.value === tile.value) {
+--              return true;
+--            }
+-+        }
+-+        case "move_down": {
+-+          if (y === size - 1) {
+-+            break;
+-+          }
+-+
+-+          const belowId = board[y + 1][x];
+-+          if (isNil(belowId) || tiles[belowId]?.value === tiles[tileId]?.value) {
+-+            return true;
+-           }
+-           break;
+--        case "move_left":
+--          if (tx > 0) {
+--            const leftId = board[ty][tx - 1];
+--            if (isNil(leftId) || tiles[leftId]?.value === tile.value) {
+--              return true;
+--            }
+-+        }
+-+        case "move_left": {
+-+          if (x === 0) {
+-+            break;
+-+          }
+-+
+-+          const leftId = board[y][x - 1];
+-+          if (isNil(leftId) || tiles[leftId]?.value === tiles[tileId]?.value) {
+-+            return true;
+-           }
+-           break;
+--        case "move_right":
+--          if (tx < size - 1) {
+--            const rightId = board[ty][tx + 1];
+--            if (isNil(rightId) || tiles[rightId]?.value === tile.value) {
+--              return true;
+--            }
+-+        }
+-+        case "move_right": {
+-+          if (x === size - 1) {
+-+            break;
+-+          }
+-+
+-+          const rightId = board[y][x + 1];
+-+          if (isNil(rightId) || tiles[rightId]?.value === tiles[tileId]?.value) {
+-+            return true;
+-           }
+-           break;
+-+        }
+-       }
+-     }
+-   }
+-@@ -59,6 +74,12 @@ export function canMove(
+- }
+- 
+- export function isGameOver(board: string[][], tiles: TileMap): boolean {
+-+  const isBoardFull = board.every((row) => row.every((cell) => !isNil(cell)));
+-+
+-+  if (!isBoardFull) {
+-+    return false;
+-+  }
+-+
+-   const directions: MoveDirection[] = [
+-     "move_up",
+-     "move_down",
+-@@ -66,13 +87,7 @@ export function isGameOver(board: string[][], tiles: TileMap): boolean {
+-     "move_right",
+-   ];
+- 
+--  for (const direction of directions) {
+--    if (canMove(board, tiles, direction)) {
+--      return false;
+--    }
+--  }
+--
+--  return true;
+-+  return directions.every((direction) => !canMove(board, tiles, direction));
+- }
+- 
+- export function getRandomMove(
+-@@ -94,4 +109,4 @@ export function getRandomMove(
+- 
+-   const randomIndex = Math.floor(Math.random() * legalMoves.length);
+-   return legalMoves[randomIndex];
+--}
+-\ No newline at end of file
+-+}

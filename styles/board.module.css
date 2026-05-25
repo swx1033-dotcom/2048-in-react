@@ -48,3 +48,42 @@
     margin: calc(var(--pixel-size) * 1);
   }
 }
+
+.autoPlaySplash {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: absolute;
+  text-align: center;
+  z-index: 3;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: calc(var(--pixel-size) * 0.75);
+  background: rgba(181, 157, 135, 0.6);
+}
+
+.autoPlaySplash > div {
+  margin: 0 auto;
+}
+
+.autoPlaySplash > div > button {
+  margin: calc(var(--pixel-size) * 3) auto;
+}
+
+.autoPlaySplash > div > h1 {
+  color: rgba(240, 240, 240, 1);
+}
+
+.button {
+  background: var(--button-background);
+  border: calc(var(--pixel-size) * 0.125) solid var(--primary-background);
+  border-radius: calc(var(--pixel-size) * 0.5);
+  font-size: calc(var(--pixel-size) * 2);
+  line-height: calc(var(--pixel-size) * 4);
+  padding: calc(var(--pixel-size) * 0.5) calc(var(--pixel-size) * 2);
+  font-weight: bold;
+  color: white;
+  cursor: pointer;
+}

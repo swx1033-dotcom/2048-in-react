@@ -15,10 +15,36 @@
   display: flex;
   align-items: center;
   margin: calc(var(--pixel-size) * 1) calc(var(--pixel-size) * 0);
+  gap: calc(var(--pixel-size) * 1);
 }
 
 .twenty48 > header > * {
   flex: 1;
+}
+
+.twenty48 > header > h1 {
+  flex: 0;
+}
+
+.autoPlayButton {
+  background: var(--button-background);
+  border: calc(var(--pixel-size) * 0.125) solid var(--primary-background);
+  border-radius: calc(var(--pixel-size) * 0.5);
+  font-size: calc(var(--pixel-size) * 1.5);
+  line-height: calc(var(--pixel-size) * 3);
+  padding: calc(var(--pixel-size) * 0.5) calc(var(--pixel-size) * 1.5);
+  font-weight: bold;
+  color: white;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+@media (min-width: 512px) {
+  .autoPlayButton {
+    font-size: calc(var(--pixel-size) * 2);
+    line-height: calc(var(--pixel-size) * 4);
+    padding: calc(var(--pixel-size) * 0.5) calc(var(--pixel-size) * 2);
+  }
 }
 
 .twenty48 > footer {

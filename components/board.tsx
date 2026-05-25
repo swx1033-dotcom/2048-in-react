@@ -7,11 +7,18 @@ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
 import Splash from "./splash";
 
 export default function Board() {
-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
+  const { getTiles, moveTiles, startGame, status, isAutoPlaying, stopAutoPlay } = useContext(GameContext);
   const initialized = useRef(false);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
+      if (isAutoPlaying) {
+        if (e.code === "Escape") {
+          stopAutoPlay();
+        }
+        return;
+      }
+
       // disables page scrolling with keyboard arrows
       e.preventDefault();
 
@@ -30,11 +37,15 @@ export default function Board() {
           break;
       }
     },
-    [moveTiles],
+    [moveTiles, isAutoPlaying, stopAutoPlay],
   );
 
   const handleSwipe = useCallback(
     ({ deltaX, deltaY }: SwipeInput) => {
+      if (isAutoPlaying) {
+        return;
+      }
+
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
         if (deltaX > 0) {
           moveTiles("move_right");
@@ -49,7 +60,7 @@ export default function Board() {
         }
       }
     },
-    [moveTiles],
+    [moveTiles, isAutoPlaying],
   );
 
   const renderGrid = () => {
@@ -89,6 +100,16 @@ export default function Board() {
       <div className={styles.board}>
         {status === "won" && <Splash heading="You won!" type="won" />}
         {status === "lost" && <Splash heading="You lost!" />}
+        {isAutoPlaying && (
+          <div className={styles.autoPlaySplash}>
+            <div>
+              <h1>演示中…</h1>
+              <button className={styles.button} onClick={stopAutoPlay}>
+                停止演示
+              </button>
+            </div>
+          </div>
+        )}
         <div className={styles.tiles}>{renderTiles()}</div>
         <div className={styles.grid}>{renderGrid()}</div>
       </div>

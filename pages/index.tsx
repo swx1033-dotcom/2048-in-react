@@ -1,10 +1,22 @@
 import Head from "next/head";
 import Image from "next/image";
+import { useContext } from "react";
 import Board from "@/components/board";
 import Score from "@/components/score";
+import { GameContext } from "@/context/game-context";
 import styles from "@/styles/index.module.css";
 
 export default function Home() {
+  const { isAutoPlaying, startAutoPlay, stopAutoPlay } = useContext(GameContext);
+
+  const handleAutoPlayClick = () => {
+    if (isAutoPlaying) {
+      stopAutoPlay();
+    } else {
+      startAutoPlay();
+    }
+  };
+
   return (
     <div className={styles.twenty48}>
       <Head>
@@ -23,8 +35,11 @@ export default function Home() {
         <link rel="icon" type="image/png" sizes="32x32" href="favicon32.png" />
         <link rel="icon" type="image/png" sizes="16x16" href="favicon16.png" />
       </Head>
-      <header>
+      <header className={styles.header}>
         <h1>2048</h1>
+        <button className={styles.autoPlayButton} onClick={handleAutoPlayClick}>
+          {isAutoPlaying ? "⏹ 停止演示" : "▶ 自动演示"}
+        </button>
         <Score />
       </header>
       <main>

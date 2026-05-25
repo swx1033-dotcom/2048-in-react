@@ -1,0 +1,296 @@
+diff --git a/components/board.tsx b/components/board.tsx
+index 57e2531..b19471a 100644
+--- a/components/board.tsx
++++ b/components/board.tsx
+@@ -7,11 +7,18 @@ import MobileSwiper, { SwipeInput } from "./mobile-swiper";
+ import Splash from "./splash";
+ 
+ export default function Board() {
+-  const { getTiles, moveTiles, startGame, status } = useContext(GameContext);
++  const { getTiles, moveTiles, startGame, status, isAutoPlaying, stopAutoPlay } = useContext(GameContext);
+   const initialized = useRef(false);
+ 
+   const handleKeyDown = useCallback(
+     (e: KeyboardEvent) => {
++      if (isAutoPlaying) {
++        if (e.code === "Escape") {
++          stopAutoPlay();
++        }
++        return;
++      }
++
+       // disables page scrolling with keyboard arrows
+       e.preventDefault();
+ 
+@@ -30,11 +37,15 @@ export default function Board() {
+           break;
+       }
+     },
+-    [moveTiles],
++    [moveTiles, isAutoPlaying, stopAutoPlay],
+   );
+ 
+   const handleSwipe = useCallback(
+     ({ deltaX, deltaY }: SwipeInput) => {
++      if (isAutoPlaying) {
++        return;
++      }
++
+       if (Math.abs(deltaX) > Math.abs(deltaY)) {
+         if (deltaX > 0) {
+           moveTiles("move_right");
+@@ -49,7 +60,7 @@ export default function Board() {
+         }
+       }
+     },
+-    [moveTiles],
++    [moveTiles, isAutoPlaying],
+   );
+ 
+   const renderGrid = () => {
+@@ -89,6 +100,16 @@ export default function Board() {
+       <div className={styles.board}>
+         {status === "won" && <Splash heading="You won!" type="won" />}
+         {status === "lost" && <Splash heading="You lost!" />}
++        {isAutoPlaying && (
++          <div className={styles.autoPlaySplash}>
++            <div>
++              <h1>演示中…</h1>
++              <button className={styles.button} onClick={stopAutoPlay}>
++                停止演示
++              </button>
++            </div>
++          </div>
++        )}
+         <div className={styles.tiles}>{renderTiles()}</div>
+         <div className={styles.grid}>{renderGrid()}</div>
+       </div>
+diff --git a/context/game-context.tsx b/context/game-context.tsx
+index 0b93edc..cb46c8f 100644
+--- a/context/game-context.tsx
++++ b/context/game-context.tsx
+@@ -4,11 +4,14 @@ import {
+   useCallback,
+   useEffect,
+   useReducer,
++  useRef,
++  useState,
+ } from "react";
+ import { isNil, throttle } from "lodash";
+ import {
+   gameWinTileValue,
+   mergeAnimationDuration,
++  moveAnimationDuration,
+   tileCountPerDimension,
+ } from "@/constants";
+ import { Tile } from "@/models/tile";
+@@ -19,13 +22,27 @@ type MoveDirection = "move_up" | "move_down" | "move_left" | "move_right";
+ export const GameContext = createContext({
+   score: 0,
+   status: "ongoing",
++  isAutoPlaying: false,
+   moveTiles: (_: MoveDirection) => {},
+   getTiles: () => [] as Tile[],
+   startGame: () => {},
++  startAutoPlay: () => {},
++  stopAutoPlay: () => {},
+ });
+ 
+ export default function GameProvider({ children }: PropsWithChildren) {
+   const [gameState, dispatch] = useReducer(gameReducer, initialState);
++  const [isAutoPlaying, setIsAutoPlaying] = useState(false);
++  const autoPlayIntervalRef = useRef<NodeJS.Timeout | null>(null);
++  const autoPlayDelay = 500; // ms
++  const animationWaitTime = mergeAnimationDuration + moveAnimationDuration;
++
++  const directions: MoveDirection[] = [
++    "move_up",
++    "move_down",
++    "move_left",
++    "move_right",
++  ];
+ 
+   const getEmptyCells = () => {
+     const results: [number, number][] = [];
+@@ -71,6 +88,27 @@ export default function GameProvider({ children }: PropsWithChildren) {
+     dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
+   };
+ 
++  const startAutoPlay = useCallback(() => {
++    setIsAutoPlaying(true);
++    
++    const autoPlay = () => {
++      const randomIndex = Math.floor(Math.random() * directions.length);
++      moveTiles(directions[randomIndex]);
++    };
++    
++    autoPlayIntervalRef.current = setInterval(() => {
++      autoPlay();
++    }, autoPlayDelay);
++  }, [moveTiles]);
++
++  const stopAutoPlay = useCallback(() => {
++    setIsAutoPlaying(false);
++    if (autoPlayIntervalRef.current) {
++      clearInterval(autoPlayIntervalRef.current);
++      autoPlayIntervalRef.current = null;
++    }
++  }, []);
++
+   const checkGameState = () => {
+     const isWon =
+       Object.values(gameState.tiles).filter((t) => t.value === gameWinTileValue)
+@@ -122,14 +160,23 @@ export default function GameProvider({ children }: PropsWithChildren) {
+     }
+   }, [gameState.hasChanged]);
+ 
++  useEffect(() => {
++    if (gameState.status !== "ongoing") {
++      stopAutoPlay();
++    }
++  }, [gameState.status, stopAutoPlay]);
++
+   return (
+     <GameContext.Provider
+       value={{
+         score: gameState.score,
+         status: gameState.status,
++        isAutoPlaying,
+         getTiles,
+         moveTiles,
+         startGame,
++        startAutoPlay,
++        stopAutoPlay,
+       }}
+     >
+       {children}
+diff --git a/pages/index.tsx b/pages/index.tsx
+index 75c6e8b..ff6d5b2 100644
+--- a/pages/index.tsx
++++ b/pages/index.tsx
+@@ -1,10 +1,22 @@
+ import Head from "next/head";
+ import Image from "next/image";
++import { useContext } from "react";
+ import Board from "@/components/board";
+ import Score from "@/components/score";
++import { GameContext } from "@/context/game-context";
+ import styles from "@/styles/index.module.css";
+ 
+ export default function Home() {
++  const { isAutoPlaying, startAutoPlay, stopAutoPlay } = useContext(GameContext);
++
++  const handleAutoPlayClick = () => {
++    if (isAutoPlaying) {
++      stopAutoPlay();
++    } else {
++      startAutoPlay();
++    }
++  };
++
+   return (
+     <div className={styles.twenty48}>
+       <Head>
+@@ -23,8 +35,11 @@ export default function Home() {
+         <link rel="icon" type="image/png" sizes="32x32" href="favicon32.png" />
+         <link rel="icon" type="image/png" sizes="16x16" href="favicon16.png" />
+       </Head>
+-      <header>
++      <header className={styles.header}>
+         <h1>2048</h1>
++        <button className={styles.autoPlayButton} onClick={handleAutoPlayClick}>
++          {isAutoPlaying ? "⏹ 停止演示" : "▶ 自动演示"}
++        </button>
+         <Score />
+       </header>
+       <main>
+diff --git a/styles/board.module.css b/styles/board.module.css
+index f2088b2..ef4c5d3 100644
+--- a/styles/board.module.css
++++ b/styles/board.module.css
+@@ -48,3 +48,42 @@
+     margin: calc(var(--pixel-size) * 1);
+   }
+ }
++
++.autoPlaySplash {
++  display: flex;
++  justify-content: center;
++  align-items: center;
++  position: absolute;
++  text-align: center;
++  z-index: 3;
++  top: 0;
++  left: 0;
++  right: 0;
++  bottom: 0;
++  border-radius: calc(var(--pixel-size) * 0.75);
++  background: rgba(181, 157, 135, 0.6);
++}
++
++.autoPlaySplash > div {
++  margin: 0 auto;
++}
++
++.autoPlaySplash > div > button {
++  margin: calc(var(--pixel-size) * 3) auto;
++}
++
++.autoPlaySplash > div > h1 {
++  color: rgba(240, 240, 240, 1);
++}
++
++.button {
++  background: var(--button-background);
++  border: calc(var(--pixel-size) * 0.125) solid var(--primary-background);
++  border-radius: calc(var(--pixel-size) * 0.5);
++  font-size: calc(var(--pixel-size) * 2);
++  line-height: calc(var(--pixel-size) * 4);
++  padding: calc(var(--pixel-size) * 0.5) calc(var(--pixel-size) * 2);
++  font-weight: bold;
++  color: white;
++  cursor: pointer;
++}
+diff --git a/styles/index.module.css b/styles/index.module.css
+index 69b8807..b2efe8a 100644
+--- a/styles/index.module.css
++++ b/styles/index.module.css
+@@ -15,12 +15,38 @@
+   display: flex;
+   align-items: center;
+   margin: calc(var(--pixel-size) * 1) calc(var(--pixel-size) * 0);
++  gap: calc(var(--pixel-size) * 1);
+ }
+ 
+ .twenty48 > header > * {
+   flex: 1;
+ }
+ 
++.twenty48 > header > h1 {
++  flex: 0;
++}
++
++.autoPlayButton {
++  background: var(--button-background);
++  border: calc(var(--pixel-size) * 0.125) solid var(--primary-background);
++  border-radius: calc(var(--pixel-size) * 0.5);
++  font-size: calc(var(--pixel-size) * 1.5);
++  line-height: calc(var(--pixel-size) * 3);
++  padding: calc(var(--pixel-size) * 0.5) calc(var(--pixel-size) * 1.5);
++  font-weight: bold;
++  color: white;
++  cursor: pointer;
++  white-space: nowrap;
++}
++
++@media (min-width: 512px) {
++  .autoPlayButton {
++    font-size: calc(var(--pixel-size) * 2);
++    line-height: calc(var(--pixel-size) * 4);
++    padding: calc(var(--pixel-size) * 0.5) calc(var(--pixel-size) * 2);
++  }
++}
++
+ .twenty48 > footer {
+   margin: calc(var(--pixel-size) * 3) calc(var(--pixel-size) * 0);
+   font-weight: 600;

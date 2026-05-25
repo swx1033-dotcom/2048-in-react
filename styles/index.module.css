@@ -13,8 +13,11 @@
 
 .twenty48 > header {
   display: flex;
-  align-items: center;
-  margin: calc(var(--pixel-size) * 1) calc(var(--pixel-size) * 0);
+  flex-direction: column;
+  align-items: stretch;
+  gap: calc(var(--pixel-size) * 1.5);
+  margin: calc(var(--pixel-size) * 1) calc(var(--pixel-size) * 0)
+    calc(var(--pixel-size) * 2);
 }
 
 .twenty48 > header > * {
@@ -39,6 +42,13 @@
 }
 
 @media (min-width: 512px) {
+  .twenty48 > header {
+    flex-direction: row;
+    align-items: center;
+    gap: calc(var(--pixel-size) * 2);
+    margin-bottom: calc(var(--pixel-size) * 1);
+  }
+
   .twenty48 > footer {
     display: flex;
     flex-direction: row-reverse;

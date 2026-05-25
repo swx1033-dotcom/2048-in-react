@@ -1,0 +1,890 @@
+diff --git a/__tests__/compontents/score.test.tsx b/__tests__/compontents/score.test.tsx
+index e7f661d..798f0f5 100644
+--- a/__tests__/compontents/score.test.tsx
++++ b/__tests__/compontents/score.test.tsx
+@@ -1,17 +1,17 @@
+-import { render } from "@testing-library/react";
++import { render, screen } from "@testing-library/react";
+ import GameProvider from "@/context/game-context";
+ import Board from "@/components/board";
+ import Score from "@/components/score";
+ 
+ describe("Score", () => {
+   it("should display score", () => {
+-    const { container } = render(
++    render(
+       <GameProvider>
+         <Score />
+         <Board />
+       </GameProvider>,
+     );
+ 
+-    expect(container.querySelector(".score > div")?.textContent).toEqual("0");
++    expect(screen.getByTestId("score-value").textContent).toEqual("0");
+   });
+ });
+diff --git a/__tests__/context/game-context.test.tsx b/__tests__/context/game-context.test.tsx
+index 7305f3c..a327df7 100644
+--- a/__tests__/context/game-context.test.tsx
++++ b/__tests__/context/game-context.test.tsx
+@@ -1,9 +1,29 @@
+-import { fireEvent, render } from "@testing-library/react";
++import { act, fireEvent, render, screen } from "@testing-library/react";
+ import GameProvider from "@/context/game-context";
+ import Board from "@/components/board";
+ import Score from "@/components/score";
+ 
+ describe("GameProvider", () => {
++  beforeEach(() => {
++    jest.useFakeTimers();
++    jest
++      .spyOn(window, "requestAnimationFrame")
++      .mockImplementation((callback: FrameRequestCallback) => {
++        return window.setTimeout(() => callback(performance.now()), 16);
++      });
++    jest
++      .spyOn(window, "cancelAnimationFrame")
++      .mockImplementation((id: number) => {
++        window.clearTimeout(id);
++      });
++  });
++
++  afterEach(() => {
++    jest.runOnlyPendingTimers();
++    jest.useRealTimers();
++    jest.restoreAllMocks();
++  });
++
+   describe("startGame", () => {
+     it("should start the game with two tiles", () => {
+       const { container } = render(
+@@ -51,14 +71,14 @@ describe("GameProvider", () => {
+ 
+   describe("score", () => {
+     it("should return score", () => {
+-      const { container } = render(
++      render(
+         <GameProvider>
+           <Score />
+           <Board />
+         </GameProvider>,
+       );
+ 
+-      expect(container.querySelector(".score > div")?.textContent).toEqual("0");
++      expect(screen.getByTestId("score-value").textContent).toEqual("0");
+     });
+ 
+     it("should refresh score after move", () => {
+@@ -69,14 +89,50 @@ describe("GameProvider", () => {
+         </GameProvider>,
+       );
+ 
+-      expect(container.querySelector(".score > div")?.textContent).toEqual("0");
++      expect(screen.getByTestId("score-value").textContent).toEqual("0");
+ 
+       fireEvent.keyDown(container, {
+         key: "ArrowUp",
+         code: "ArrowUp",
+       });
+ 
+-      expect(container.querySelector(".score > div")?.textContent).toEqual("4");
++      expect(screen.getByTestId("score-value").textContent).toEqual("4");
++    });
++  });
++
++  describe("tournament mode", () => {
++    it("should auto move and update stats after timeout", () => {
++      jest.spyOn(Math, "random").mockReturnValue(0);
++
++      render(
++        <GameProvider>
++          <Score />
++          <Board />
++        </GameProvider>,
++      );
++
++      fireEvent.click(
++        screen.getByRole("button", { name: "Tournament mode" }),
++      );
++
++      expect(screen.getByTestId("remaining-time").textContent).toEqual("5.0s");
++
++      act(() => {
++        jest.advanceTimersByTime(1000);
++      });
++
++      expect(screen.getByTestId("remaining-time").textContent).not.toEqual(
++        "5.0s",
++      );
++
++      act(() => {
++        jest.advanceTimersByTime(4200);
++      });
++
++      expect(screen.getByTestId("timeout-count").textContent).toEqual("1");
++      expect(screen.getByTestId("average-thinking-time").textContent).toEqual(
++        "5.0s",
++      );
+     });
+   });
+ });
+diff --git a/components/score.tsx b/components/score.tsx
+index 5fd1532..c699021 100644
+--- a/components/score.tsx
++++ b/components/score.tsx
+@@ -1,14 +1,76 @@
+ import { GameContext } from "@/context/game-context";
+ import styles from "@/styles/score.module.css";
+ import { useContext } from "react";
++import { ModeSwitch } from "./splash";
++
++function formatDuration(milliseconds: number) {
++  return `${(milliseconds / 1000).toFixed(1)}s`;
++}
+ 
+ export default function Score() {
+-  const { score } = useContext(GameContext);
++  const {
++    score,
++    mode,
++    status,
++    remainingTimeMs,
++    turnDurationMs,
++    averageThinkingTimeMs,
++    timeoutCount,
++  } = useContext(GameContext);
++  const timerRadius = 32;
++  const timerCircumference = 2 * Math.PI * timerRadius;
++  const timerProgress = Math.max(
++    0,
++    Math.min(remainingTimeMs / turnDurationMs, 1),
++  );
++  const timerOffset = timerCircumference * (1 - timerProgress);
+ 
+   return (
+-    <div className={styles.score}>
+-      Score
+-      <div>{score}</div>
++    <div className={styles.panel}>
++      <ModeSwitch />
++      <div className={styles.stats}>
++        <div className={styles.score}>
++          Score
++          <div data-testid="score-value">{score}</div>
++        </div>
++        {mode === "tournament" && status === "ongoing" && (
++          <div className={`${styles.score} ${styles.timerCard}`}>
++            Time left
++            <div className={styles.timerValue} data-testid="remaining-time">
++              <svg
++                aria-hidden="true"
++                className={styles.timerChart}
++                viewBox="0 0 80 80"
++              >
++                <circle className={styles.timerTrack} cx="40" cy="40" r="32" />
++                <circle
++                  className={styles.timerProgress}
++                  cx="40"
++                  cy="40"
++                  r="32"
++                  strokeDasharray={timerCircumference}
++                  strokeDashoffset={timerOffset}
++                />
++              </svg>
++              <span>{formatDuration(remainingTimeMs)}</span>
++            </div>
++          </div>
++        )}
++        {mode === "tournament" && (
++          <>
++            <div className={styles.score}>
++              Avg. time
++              <div data-testid="average-thinking-time">
++                {formatDuration(averageThinkingTimeMs)}
++              </div>
++            </div>
++            <div className={styles.score}>
++              Timeouts
++              <div data-testid="timeout-count">{timeoutCount}</div>
++            </div>
++          </>
++        )}
++      </div>
+     </div>
+   );
+ }
+diff --git a/components/splash.tsx b/components/splash.tsx
+index de37256..fba125b 100644
+--- a/components/splash.tsx
++++ b/components/splash.tsx
+@@ -2,14 +2,46 @@ import { GameContext } from "@/context/game-context";
+ import styles from "@/styles/splash.module.css";
+ import { useContext } from "react";
+ 
+-export default function Splash({ heading = "You won!", type = "" }) {
++type SplashProps = {
++  heading?: string;
++  type?: string;
++};
++
++export function ModeSwitch() {
++  const { mode, setMode } = useContext(GameContext);
++
++  return (
++    <div className={styles.modeControl}>
++      <div className={styles.modeLabel}>Mode</div>
++      <div className={styles.modeSwitch}>
++        <button
++          className={`${styles.modeButton} ${mode === "normal" ? styles.active : ""}`}
++          onClick={() => setMode("normal")}
++          type="button"
++        >
++          Normal mode
++        </button>
++        <button
++          className={`${styles.modeButton} ${mode === "tournament" ? styles.active : ""}`}
++          onClick={() => setMode("tournament")}
++          type="button"
++        >
++          Tournament mode
++        </button>
++      </div>
++    </div>
++  );
++}
++
++export default function Splash({ heading = "You won!", type = "" }: SplashProps) {
+   const { startGame } = useContext(GameContext);
+ 
+   return (
+     <div className={`${styles.splash} ${type === "won" && styles.win}`}>
+       <div>
+         <h1>{heading}</h1>
+-        <button className={styles.button} onClick={startGame}>
++        <ModeSwitch />
++        <button className={styles.button} onClick={startGame} type="button">
+           Play again
+         </button>
+       </div>
+diff --git a/constants.ts b/constants.ts
+index 053a40f..acbae35 100644
+--- a/constants.ts
++++ b/constants.ts
+@@ -18,3 +18,5 @@ export const moveAnimationDuration = 200; // ms
+  * Game setup
+  */
+ export const gameWinTileValue = 2048;
++
++export const tournamentTurnDuration = 5000;
+diff --git a/context/game-context.tsx b/context/game-context.tsx
+index 0b93edc..31dfb27 100644
+--- a/context/game-context.tsx
++++ b/context/game-context.tsx
+@@ -3,109 +3,323 @@ import {
+   createContext,
+   useCallback,
+   useEffect,
++  useMemo,
+   useReducer,
++  useRef,
++  useState,
+ } from "react";
+ import { isNil, throttle } from "lodash";
+ import {
+   gameWinTileValue,
+   mergeAnimationDuration,
+   tileCountPerDimension,
++  tournamentTurnDuration,
+ } from "@/constants";
+ import { Tile } from "@/models/tile";
+ import gameReducer, { initialState } from "@/reducers/game-reducer";
+ 
+-type MoveDirection = "move_up" | "move_down" | "move_left" | "move_right";
++export type MoveDirection =
++  | "move_up"
++  | "move_down"
++  | "move_left"
++  | "move_right";
+ 
+-export const GameContext = createContext({
++export type GameMode = "normal" | "tournament";
++
++type TournamentStats = {
++  completedTurns: number;
++  totalThinkingTimeMs: number;
++  timeoutCount: number;
++};
++
++type GameContextValue = {
++  score: number;
++  status: "ongoing" | "won" | "lost";
++  mode: GameMode;
++  remainingTimeMs: number;
++  turnDurationMs: number;
++  timeoutCount: number;
++  averageThinkingTimeMs: number;
++  moveTiles: (type: MoveDirection) => void;
++  getTiles: () => Tile[];
++  startGame: () => void;
++  setMode: (mode: GameMode) => void;
++};
++
++const defaultTournamentStats: TournamentStats = {
++  completedTurns: 0,
++  totalThinkingTimeMs: 0,
++  timeoutCount: 0,
++};
++
++const moveDirections: MoveDirection[] = [
++  "move_up",
++  "move_down",
++  "move_left",
++  "move_right",
++];
++
++export const GameContext = createContext<GameContextValue>({
+   score: 0,
+   status: "ongoing",
++  mode: "normal",
++  remainingTimeMs: tournamentTurnDuration,
++  turnDurationMs: tournamentTurnDuration,
++  timeoutCount: 0,
++  averageThinkingTimeMs: 0,
+   moveTiles: (_: MoveDirection) => {},
+   getTiles: () => [] as Tile[],
+   startGame: () => {},
++  setMode: (_: GameMode) => {},
+ });
+ 
+ export default function GameProvider({ children }: PropsWithChildren) {
+   const [gameState, dispatch] = useReducer(gameReducer, initialState);
++  const [mode, setModeState] = useState<GameMode>("normal");
++  const [remainingTimeMs, setRemainingTimeMs] =
++    useState<number>(tournamentTurnDuration);
++  const [tournamentStats, setTournamentStats] =
++    useState<TournamentStats>(defaultTournamentStats);
++  const gameStateRef = useRef(gameState);
++  const modeRef = useRef(mode);
++  const turnStartedAtRef = useRef<number | null>(null);
++  const frameRef = useRef<number | null>(null);
++  const timeoutHandlerRef = useRef<() => void>(() => {});
++
++  useEffect(() => {
++    gameStateRef.current = gameState;
++  }, [gameState]);
++
++  useEffect(() => {
++    modeRef.current = mode;
++  }, [mode]);
++
++  const clearTimer = useCallback(() => {
++    if (!isNil(frameRef.current)) {
++      cancelAnimationFrame(frameRef.current);
++      frameRef.current = null;
++    }
++
++    turnStartedAtRef.current = null;
++  }, []);
++
++  const resetTournamentStats = useCallback(() => {
++    setTournamentStats(defaultTournamentStats);
++    setRemainingTimeMs(tournamentTurnDuration);
++  }, []);
+ 
+-  const getEmptyCells = () => {
++  const getEmptyCells = useCallback(() => {
++    const currentState = gameStateRef.current;
+     const results: [number, number][] = [];
+ 
+     for (let x = 0; x < tileCountPerDimension; x++) {
+       for (let y = 0; y < tileCountPerDimension; y++) {
+-        if (isNil(gameState.board[y][x])) {
++        if (isNil(currentState.board[y][x])) {
+           results.push([x, y]);
+         }
+       }
+     }
++
+     return results;
+-  };
++  }, []);
+ 
+-  const appendRandomTile = () => {
++  const appendRandomTile = useCallback(() => {
+     const emptyCells = getEmptyCells();
++
+     if (emptyCells.length > 0) {
+       const cellIndex = Math.floor(Math.random() * emptyCells.length);
+       const newTile = {
+         position: emptyCells[cellIndex],
+         value: 2,
+       };
++
+       dispatch({ type: "create_tile", tile: newTile });
+     }
+-  };
+-
+-  const getTiles = () => {
+-    return gameState.tilesByIds.map((tileId) => gameState.tiles[tileId]);
+-  };
+-
+-  const moveTiles = useCallback(
+-    throttle(
+-      (type: MoveDirection) => dispatch({ type }),
+-      mergeAnimationDuration * 1.05,
+-      { trailing: false },
+-    ),
+-    [dispatch],
+-  );
++  }, [getEmptyCells]);
+ 
+-  const startGame = () => {
+-    dispatch({ type: "reset_game" });
+-    dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
+-    dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
+-  };
++  const getTiles = useCallback((): Tile[] => {
++    return gameState.tilesByIds.map((tileId: string) => gameState.tiles[tileId]);
++  }, [gameState.tiles, gameState.tilesByIds]);
+ 
+-  const checkGameState = () => {
+-    const isWon =
+-      Object.values(gameState.tiles).filter((t) => t.value === gameWinTileValue)
+-        .length > 0;
++  const getLegalMoves = useCallback((state = gameStateRef.current) => {
++    return moveDirections.filter(
++      (direction) => gameReducer(state, { type: direction }).hasChanged,
++    );
++  }, []);
+ 
+-    if (isWon) {
+-      dispatch({ type: "update_status", status: "won" });
++  const recordTurn = useCallback((didTimeout: boolean) => {
++    if (modeRef.current !== "tournament" || isNil(turnStartedAtRef.current)) {
+       return;
+     }
+ 
+-    const { tiles, board } = gameState;
++    const thinkingTimeMs = Math.min(
++      performance.now() - turnStartedAtRef.current,
++      tournamentTurnDuration,
++    );
+ 
+-    const maxIndex = tileCountPerDimension - 1;
+-    for (let x = 0; x < maxIndex; x += 1) {
+-      for (let y = 0; y < maxIndex; y += 1) {
+-        if (
+-          isNil(gameState.board[x][y]) ||
+-          isNil(gameState.board[x + 1][y]) ||
+-          isNil(gameState.board[x][y + 1])
+-        ) {
+-          return;
+-        }
++    setTournamentStats((currentStats: TournamentStats) => ({
++      completedTurns: currentStats.completedTurns + 1,
++      totalThinkingTimeMs: currentStats.totalThinkingTimeMs + thinkingTimeMs,
++      timeoutCount: currentStats.timeoutCount + (didTimeout ? 1 : 0),
++    }));
++  }, []);
++
++  const startTimer = useCallback(
++    (nextMode: GameMode = modeRef.current) => {
++      if (nextMode !== "tournament") {
++        clearTimer();
++        setRemainingTimeMs(tournamentTurnDuration);
++        return;
++      }
+ 
+-        if (tiles[board[x][y]].value === tiles[board[x + 1][y]].value) {
++      clearTimer();
++      turnStartedAtRef.current = performance.now();
++      setRemainingTimeMs(tournamentTurnDuration);
++
++      const tick = (timestamp: number) => {
++        if (isNil(turnStartedAtRef.current)) {
+           return;
+         }
+ 
+-        if (tiles[board[x][y]].value === tiles[board[x][y + 1]].value) {
++        const elapsed = timestamp - turnStartedAtRef.current;
++        const nextRemainingTime = Math.max(
++          tournamentTurnDuration - elapsed,
++          0,
++        );
++
++        setRemainingTimeMs(nextRemainingTime);
++
++        if (nextRemainingTime === 0) {
++          frameRef.current = null;
++          timeoutHandlerRef.current();
+           return;
+         }
++
++        frameRef.current = requestAnimationFrame(tick);
++      };
++
++      frameRef.current = requestAnimationFrame(tick);
++    },
++    [clearTimer],
++  );
++
++  const performMove = useCallback(
++    (type: MoveDirection, didTimeout = false) => {
++      const currentState = gameStateRef.current;
++
++      if (currentState.status !== "ongoing") {
++        return false;
++      }
++
++      const nextState = gameReducer(currentState, { type });
++
++      if (!nextState.hasChanged) {
++        return false;
+       }
++
++      if (modeRef.current === "tournament") {
++        recordTurn(didTimeout);
++        startTimer();
++      }
++
++      dispatch({ type });
++      return true;
++    },
++    [recordTurn, startTimer],
++  );
++
++  const moveTiles = useMemo(
++    () =>
++      throttle(
++        (type: MoveDirection) => {
++          performMove(type);
++        },
++        mergeAnimationDuration * 1.05,
++        { trailing: false },
++      ),
++    [performMove],
++  );
++
++  const startGame = useCallback(
++    (nextMode: GameMode = modeRef.current) => {
++      clearTimer();
++      resetTournamentStats();
++      dispatch({ type: "reset_game" });
++      dispatch({ type: "create_tile", tile: { position: [0, 1], value: 2 } });
++      dispatch({ type: "create_tile", tile: { position: [0, 2], value: 2 } });
++
++      if (nextMode === "tournament") {
++        startTimer(nextMode);
++      }
++    },
++    [clearTimer, resetTournamentStats, startTimer],
++  );
++
++  const setMode = useCallback(
++    (nextMode: GameMode) => {
++      if (modeRef.current === nextMode) {
++        return;
++      }
++
++      modeRef.current = nextMode;
++      setModeState(nextMode);
++      startGame(nextMode);
++    },
++    [startGame],
++  );
++
++  const checkGameState = useCallback(() => {
++    const currentState = gameStateRef.current;
++
++    if (currentState.tilesByIds.length === 0) {
++      return;
++    }
++
++    const tiles = Object.values(currentState.tiles) as Tile[];
++    const isWon = tiles.some((tile) => tile.value === gameWinTileValue);
++
++    if (isWon) {
++      dispatch({ type: "update_status", status: "won" });
++      return;
+     }
+ 
+-    dispatch({ type: "update_status", status: "lost" });
+-  };
++    if (getLegalMoves(currentState).length === 0) {
++      dispatch({ type: "update_status", status: "lost" });
++    }
++  }, [getLegalMoves]);
++
++  const handleTimeout = useCallback(() => {
++    if (
++      modeRef.current !== "tournament" ||
++      gameStateRef.current.status !== "ongoing"
++    ) {
++      clearTimer();
++      return;
++    }
++
++    const legalMoves = getLegalMoves();
++
++    if (legalMoves.length === 0) {
++      recordTurn(true);
++      clearTimer();
++      setRemainingTimeMs(0);
++      dispatch({ type: "update_status", status: "lost" });
++      return;
++    }
++
++    const randomMove =
++      legalMoves[Math.floor(Math.random() * legalMoves.length)];
++    performMove(randomMove, true);
++  }, [clearTimer, getLegalMoves, performMove, recordTurn]);
++
++  timeoutHandlerRef.current = handleTimeout;
++
++  useEffect(() => {
++    return () => {
++      moveTiles.cancel();
++      clearTimer();
++    };
++  }, [clearTimer, moveTiles]);
+ 
+   useEffect(() => {
+     if (gameState.hasChanged) {
+@@ -114,22 +328,45 @@ export default function GameProvider({ children }: PropsWithChildren) {
+         appendRandomTile();
+       }, mergeAnimationDuration);
+     }
+-  }, [gameState.hasChanged]);
++  }, [appendRandomTile, gameState.hasChanged]);
+ 
+   useEffect(() => {
+     if (!gameState.hasChanged) {
+       checkGameState();
+     }
+-  }, [gameState.hasChanged]);
++  }, [checkGameState, gameState.hasChanged]);
++
++  useEffect(() => {
++    if (mode !== "tournament") {
++      clearTimer();
++      setRemainingTimeMs(tournamentTurnDuration);
++      return;
++    }
++
++    if (gameState.status !== "ongoing") {
++      clearTimer();
++    }
++  }, [clearTimer, gameState.status, mode]);
++
++  const averageThinkingTimeMs =
++    tournamentStats.completedTurns === 0
++      ? 0
++      : tournamentStats.totalThinkingTimeMs / tournamentStats.completedTurns;
+ 
+   return (
+     <GameContext.Provider
+       value={{
+         score: gameState.score,
+         status: gameState.status,
++        mode,
++        remainingTimeMs,
++        turnDurationMs: tournamentTurnDuration,
++        timeoutCount: tournamentStats.timeoutCount,
++        averageThinkingTimeMs,
+         getTiles,
+         moveTiles,
+-        startGame,
++        startGame: () => startGame(),
++        setMode,
+       }}
+     >
+       {children}
+diff --git a/styles/index.module.css b/styles/index.module.css
+index 69b8807..497515e 100644
+--- a/styles/index.module.css
++++ b/styles/index.module.css
+@@ -13,8 +13,11 @@
+ 
+ .twenty48 > header {
+   display: flex;
+-  align-items: center;
+-  margin: calc(var(--pixel-size) * 1) calc(var(--pixel-size) * 0);
++  flex-direction: column;
++  align-items: stretch;
++  gap: calc(var(--pixel-size) * 1.5);
++  margin: calc(var(--pixel-size) * 1) calc(var(--pixel-size) * 0)
++    calc(var(--pixel-size) * 2);
+ }
+ 
+ .twenty48 > header > * {
+@@ -39,6 +42,13 @@
+ }
+ 
+ @media (min-width: 512px) {
++  .twenty48 > header {
++    flex-direction: row;
++    align-items: center;
++    gap: calc(var(--pixel-size) * 2);
++    margin-bottom: calc(var(--pixel-size) * 1);
++  }
++
+   .twenty48 > footer {
+     display: flex;
+     flex-direction: row-reverse;
+diff --git a/styles/score.module.css b/styles/score.module.css
+index 8871fc5..823abe1 100644
+--- a/styles/score.module.css
++++ b/styles/score.module.css
+@@ -1,28 +1,98 @@
++.panel {
++  display: flex;
++  flex-direction: column;
++  gap: calc(var(--pixel-size) * 0.75);
++}
++
++.stats {
++  display: grid;
++  grid-template-columns: repeat(2, minmax(0, 1fr));
++  gap: calc(var(--pixel-size) * 0.75);
++}
++
+ .score {
+   background: var(--secondary-background);
+   border: calc(var(--pixel-size) * 0.5) solid var(--secondary-background);
+   border-radius: calc(var(--pixel-size) * 0.75);
+   color: var(--tile-background);
+   font-size: calc(var(--pixel-size) * 1.5);
+-  line-height: calc(var(--pixel-size) * 3);
++  line-height: calc(var(--pixel-size) * 1.4);
+   font-weight: bold;
+   text-align: center;
+   text-transform: uppercase;
++  padding: calc(var(--pixel-size) * 0.75);
+ }
+ 
+ .score > div {
+   font-size: calc(var(--pixel-size) * 2.5);
+   color: var(--secondary-text-color);
++  margin-top: calc(var(--pixel-size) * 0.5);
++}
++
++.timerCard {
++  padding-bottom: calc(var(--pixel-size) * 0.5);
++}
++
++.timerValue {
++  position: relative;
++  display: flex;
++  justify-content: center;
++  align-items: center;
++  width: calc(var(--pixel-size) * 7);
++  height: calc(var(--pixel-size) * 7);
++  margin: calc(var(--pixel-size) * 0.75) auto 0;
++}
++
++.timerValue > span {
++  position: relative;
++  z-index: 1;
++}
++
++.timerChart {
++  position: absolute;
++  inset: 0;
++  width: 100%;
++  height: 100%;
++  transform: rotate(-90deg);
++}
++
++.timerTrack,
++.timerProgress {
++  fill: none;
++  stroke-width: 6;
++}
++
++.timerTrack {
++  stroke: rgba(238, 228, 218, 0.25);
++}
++
++.timerProgress {
++  stroke: var(--secondary-text-color);
++  stroke-linecap: round;
+ }
+ 
+ @media (min-width: 512px) {
++  .panel {
++    gap: calc(var(--pixel-size) * 1);
++  }
++
++  .stats {
++    grid-template-columns: repeat(4, minmax(0, 1fr));
++    gap: calc(var(--pixel-size) * 1);
++  }
++
+   .score {
+     border: calc(var(--pixel-size) * 1) solid var(--secondary-background);
+     font-size: calc(var(--pixel-size) * 2);
+-    line-height: calc(var(--pixel-size) * 3.5);
++    padding: calc(var(--pixel-size) * 1);
+   }
+ 
+   .score > div {
+     font-size: calc(var(--pixel-size) * 3.5);
+   }
++
++  .timerValue {
++    width: calc(var(--pixel-size) * 8);
++    height: calc(var(--pixel-size) * 8);
++  }
+ }
+diff --git a/styles/splash.module.css b/styles/splash.module.css
+index 36d17c5..a70144b 100644
+--- a/styles/splash.module.css
++++ b/styles/splash.module.css
+@@ -41,3 +41,47 @@
+   color: white;
+   cursor: pointer;
+ }
++
++.modeControl {
++  display: flex;
++  flex-direction: column;
++  gap: calc(var(--pixel-size) * 0.75);
++}
++
++.modeLabel {
++  color: var(--primary-text-color);
++  font-size: calc(var(--pixel-size) * 1.25);
++  font-weight: bold;
++  text-transform: uppercase;
++}
++
++.modeSwitch {
++  display: grid;
++  grid-template-columns: repeat(2, minmax(0, 1fr));
++  gap: calc(var(--pixel-size) * 0.5);
++  padding: calc(var(--pixel-size) * 0.5);
++  border-radius: calc(var(--pixel-size) * 0.75);
++  background: rgba(119, 110, 101, 0.15);
++}
++
++.modeButton {
++  border: none;
++  border-radius: calc(var(--pixel-size) * 0.5);
++  background: rgba(238, 228, 218, 0.75);
++  color: var(--primary-text-color);
++  cursor: pointer;
++  font-size: calc(var(--pixel-size) * 1.25);
++  font-weight: bold;
++  line-height: calc(var(--pixel-size) * 1.5);
++  padding: calc(var(--pixel-size) * 0.75) calc(var(--pixel-size) * 1);
++}
++
++.modeButton:hover,
++.modeButton:focus-visible {
++  background: rgba(238, 228, 218, 0.95);
++}
++
++.active {
++  background: var(--button-background);
++  color: white;
++}

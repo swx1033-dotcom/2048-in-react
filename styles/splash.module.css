@@ -41,3 +41,47 @@
   color: white;
   cursor: pointer;
 }
+
+.modeControl {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--pixel-size) * 0.75);
+}
+
+.modeLabel {
+  color: var(--primary-text-color);
+  font-size: calc(var(--pixel-size) * 1.25);
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.modeSwitch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: calc(var(--pixel-size) * 0.5);
+  padding: calc(var(--pixel-size) * 0.5);
+  border-radius: calc(var(--pixel-size) * 0.75);
+  background: rgba(119, 110, 101, 0.15);
+}
+
+.modeButton {
+  border: none;
+  border-radius: calc(var(--pixel-size) * 0.5);
+  background: rgba(238, 228, 218, 0.75);
+  color: var(--primary-text-color);
+  cursor: pointer;
+  font-size: calc(var(--pixel-size) * 1.25);
+  font-weight: bold;
+  line-height: calc(var(--pixel-size) * 1.5);
+  padding: calc(var(--pixel-size) * 0.75) calc(var(--pixel-size) * 1);
+}
+
+.modeButton:hover,
+.modeButton:focus-visible {
+  background: rgba(238, 228, 218, 0.95);
+}
+
+.active {
+  background: var(--button-background);
+  color: white;
+}

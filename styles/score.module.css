@@ -1,28 +1,98 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--pixel-size) * 0.75);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: calc(var(--pixel-size) * 0.75);
+}
+
 .score {
   background: var(--secondary-background);
   border: calc(var(--pixel-size) * 0.5) solid var(--secondary-background);
   border-radius: calc(var(--pixel-size) * 0.75);
   color: var(--tile-background);
   font-size: calc(var(--pixel-size) * 1.5);
-  line-height: calc(var(--pixel-size) * 3);
+  line-height: calc(var(--pixel-size) * 1.4);
   font-weight: bold;
   text-align: center;
   text-transform: uppercase;
+  padding: calc(var(--pixel-size) * 0.75);
 }
 
 .score > div {
   font-size: calc(var(--pixel-size) * 2.5);
   color: var(--secondary-text-color);
+  margin-top: calc(var(--pixel-size) * 0.5);
+}
+
+.timerCard {
+  padding-bottom: calc(var(--pixel-size) * 0.5);
+}
+
+.timerValue {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: calc(var(--pixel-size) * 7);
+  height: calc(var(--pixel-size) * 7);
+  margin: calc(var(--pixel-size) * 0.75) auto 0;
+}
+
+.timerValue > span {
+  position: relative;
+  z-index: 1;
+}
+
+.timerChart {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.timerTrack,
+.timerProgress {
+  fill: none;
+  stroke-width: 6;
+}
+
+.timerTrack {
+  stroke: rgba(238, 228, 218, 0.25);
+}
+
+.timerProgress {
+  stroke: var(--secondary-text-color);
+  stroke-linecap: round;
 }
 
 @media (min-width: 512px) {
+  .panel {
+    gap: calc(var(--pixel-size) * 1);
+  }
+
+  .stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: calc(var(--pixel-size) * 1);
+  }
+
   .score {
     border: calc(var(--pixel-size) * 1) solid var(--secondary-background);
     font-size: calc(var(--pixel-size) * 2);
-    line-height: calc(var(--pixel-size) * 3.5);
+    padding: calc(var(--pixel-size) * 1);
   }
 
   .score > div {
     font-size: calc(var(--pixel-size) * 3.5);
+  }
+
+  .timerValue {
+    width: calc(var(--pixel-size) * 8);
+    height: calc(var(--pixel-size) * 8);
   }
 }

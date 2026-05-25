@@ -12,8 +12,15 @@ export default function Board() {
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // disables page scrolling with keyboard arrows
+      if (!e.code.startsWith("Arrow")) {
+        return;
+      }
+
       e.preventDefault();
+
+      if (status !== "ongoing") {
+        return;
+      }
 
       switch (e.code) {
         case "ArrowUp":
@@ -30,11 +37,15 @@ export default function Board() {
           break;
       }
     },
-    [moveTiles],
+    [moveTiles, status],
   );
 
   const handleSwipe = useCallback(
     ({ deltaX, deltaY }: SwipeInput) => {
+      if (status !== "ongoing") {
+        return;
+      }
+
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
         if (deltaX > 0) {
           moveTiles("move_right");
@@ -49,7 +60,7 @@ export default function Board() {
         }
       }
     },
-    [moveTiles],
+    [moveTiles, status],
   );
 
   const renderGrid = () => {
@@ -87,8 +98,7 @@ export default function Board() {
   return (
     <MobileSwiper onSwipe={handleSwipe}>
       <div className={styles.board}>
-        {status === "won" && <Splash heading="You won!" type="won" />}
-        {status === "lost" && <Splash heading="You lost!" />}
+        <Splash />
         <div className={styles.tiles}>{renderTiles()}</div>
         <div className={styles.grid}>{renderGrid()}</div>
       </div>

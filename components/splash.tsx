@@ -1,18 +1,19 @@
 import { GameContext } from "@/context/game-context";
-import styles from "@/styles/splash.module.css";
 import { useContext } from "react";
+import GameStatusModal from "./GameStatusModal";
 
-export default function Splash({ heading = "You won!", type = "" }) {
-  const { startGame } = useContext(GameContext);
+export default function Splash() {
+  const { continueGame, startGame, status } = useContext(GameContext);
+
+  if (status === "ongoing") {
+    return null;
+  }
 
   return (
-    <div className={`${styles.splash} ${type === "won" && styles.win}`}>
-      <div>
-        <h1>{heading}</h1>
-        <button className={styles.button} onClick={startGame}>
-          Play again
-        </button>
-      </div>
-    </div>
+    <GameStatusModal
+      status={status}
+      onRestart={startGame}
+      onContinue={status === "won" ? continueGame : undefined}
+    />
   );
 }
